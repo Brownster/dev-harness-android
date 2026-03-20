@@ -1,0 +1,5 @@
+{
+  "name": "Dev-Harness",
+  "description": "A technical dashboard for managing automated workflows and human-in-the-loop escalations.",
+  "requestFramePermissions": []
+}
