@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertCircle, CheckCircle2, MessageSquare, User, Send, ChevronRight } from 'lucide-react';
-import { Escalation, EscalationResponse } from '../types';
+import { Escalation, EscalationResponseInput } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { triggerHaptic } from './NativeInteractions';
 import { clsx, type ClassValue } from 'clsx';
@@ -16,30 +16,67 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-interface DecisionCardProps {
-  escalation: Escalation;
-  onRespond: (payload: EscalationResponse) => Promise<void>;
+function readString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
 }
 
-export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
+function readNumber(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function parseLatestIterationContext(context: Record<string, unknown>) {
+  const latest = context.latest_iteration;
+  if (!latest || typeof latest !== 'object' || Array.isArray(latest)) {
+    return null;
+  }
+  const latestRecord = latest as Record<string, unknown>;
+  return {
+    iterationNumber: readNumber(latestRecord.iteration_number),
+    generatorOperation: readString(latestRecord.generator_operation),
+    evaluationSummary: readString(latestRecord.evaluation_summary),
+    verificationReasons: readStringArray(latestRecord.verification_reasons),
+    rubricFloorFailures: readStringArray(latestRecord.rubric_floor_failures),
+  };
+}
+
+interface DecisionCardProps {
+  escalation: Escalation;
+  onRespond: (payload: EscalationResponseInput) => Promise<void>;
+  successActions?: ReactNode;
+}
+
+export function DecisionCard({ escalation, onRespond, successActions }: DecisionCardProps) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const iterationCount = readNumber(escalation.context.iteration_count);
+  const maxIterations = readNumber(escalation.context.max_generator_evaluator_iterations);
+  const latestIteration = parseLatestIterationContext(escalation.context);
+  const repeatedRubricMisses = readNumber(escalation.context.consecutive_rubric_floor_misses);
 
   const handleSubmit = async () => {
     if (!selectedOption) return;
     
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       await onRespond({
         decision: selectedOption,
         comment,
-        responder: 'android_app',
       });
       setIsSuccess(true);
     } catch (error) {
       console.error('Failed to submit decision:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to submit decision.');
     } finally {
       setIsSubmitting(false);
     }
@@ -57,11 +94,13 @@ export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
         </div>
         <h3 className="font-headline text-xl font-bold">Decision Recorded</h3>
         <p className="text-on-surface-variant text-sm">
-          Your response has been signed and transmitted to the Dev-Harness orchestrator.
+          Your response has been sent to the Dev-Harness orchestrator using operator API
+          authentication.
         </p>
         <div className="pt-4">
           <StatusBadge status="RESOLVED" />
         </div>
+        {successActions && <div className="pt-2">{successActions}</div>}
       </motion.div>
     );
   }
@@ -76,7 +115,7 @@ export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
           </div>
           <div>
             <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant block">Escalation Required</span>
-            <span className="font-headline font-bold text-sm">ID: {escalation.id}</span>
+            <span className="font-headline font-bold text-sm">ID: {escalation.escalation_id}</span>
           </div>
         </div>
         <StatusBadge status={escalation.status} />
@@ -90,6 +129,61 @@ export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
             {escalation.question}
           </p>
         </div>
+
+        {(iterationCount !== null || latestIteration) && (
+          <div className="space-y-3 rounded-xl border border-outline-variant/10 bg-surface-container-low px-4 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status="iteration context" />
+              {iterationCount !== null && (
+                <StatusBadge
+                  status={
+                    maxIterations !== null
+                      ? `${iterationCount}/${maxIterations} iterations`
+                      : `${iterationCount} iterations`
+                  }
+                />
+              )}
+              {repeatedRubricMisses !== null && (
+                <StatusBadge status={`${repeatedRubricMisses} rubric misses`} />
+              )}
+            </div>
+            {latestIteration?.iterationNumber !== null && (
+              <p className="text-sm text-on-surface">
+                Latest evaluated iteration: {latestIteration.iterationNumber}
+                {latestIteration.generatorOperation
+                  ? ` · ${latestIteration.generatorOperation.replace(/_/g, ' ')}`
+                  : ''}
+              </p>
+            )}
+            {latestIteration?.evaluationSummary && (
+              <p className="text-sm text-on-surface-variant">{latestIteration.evaluationSummary}</p>
+            )}
+            {latestIteration?.verificationReasons.length ? (
+              <div className="space-y-1">
+                <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                  Latest Verification Blockers
+                </p>
+                {latestIteration.verificationReasons.slice(0, 4).map((reason) => (
+                  <p key={reason} className="text-sm text-on-surface-variant">
+                    {reason}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            {latestIteration?.rubricFloorFailures.length ? (
+              <div className="space-y-1">
+                <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                  Rubric Misses
+                </p>
+                {latestIteration.rubricFloorFailures.slice(0, 4).map((reason) => (
+                  <p key={reason} className="text-sm text-on-surface-variant">
+                    {reason}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {/* Options */}
         <div className="space-y-3">
@@ -130,11 +224,19 @@ export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
           />
         </div>
 
+        {submitError && (
+          <div className="rounded-lg border border-error/20 bg-error/10 px-4 py-3 text-sm text-error">
+            {submitError}
+          </div>
+        )}
+
         {/* Footer Actions */}
         <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-on-surface-variant">
             <User className="w-3 h-3" />
-            <span className="font-label text-[10px] uppercase tracking-widest">Responder: Android_App</span>
+            <span className="font-label text-[10px] uppercase tracking-widest">
+              Responder assigned from your authenticated operator session
+            </span>
           </div>
           <button
             disabled={!selectedOption || isSubmitting}
@@ -153,7 +255,7 @@ export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
               <span className="animate-pulse">Transmitting...</span>
             ) : (
               <>
-                <span>Sign & Submit</span>
+                <span>Submit Decision</span>
                 <Send className="w-3 h-3" />
               </>
             )}
@@ -165,7 +267,7 @@ export function DecisionCard({ escalation, onRespond }: DecisionCardProps) {
       <div className="bg-surface-container-low px-6 py-3 border-t border-outline-variant/5 flex items-center gap-2">
         <div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
         <span className="font-mono text-[9px] text-outline uppercase tracking-tighter">
-          HMAC-SHA256 Signature Enabled • X-Harness-Signature Active
+          Operator token attached on request • bearer authentication active
         </span>
       </div>
     </div>
