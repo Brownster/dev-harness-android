@@ -1,21 +1,36 @@
-# Dev-Harness Android (PWA)
+# Dev-Harness Android App
 
-This is the front-end application for the **Dev-Harness** orchestrator. It is built as a progressive web app (PWA) using React, Vite, and Tailwind CSS. It is designed with a mobile-first "Terminal" aesthetic, featuring haptic feedback and pull-to-refresh interactions, to serve as a replacement for Mattermost notifications.
+This is the companion Android application for the **Dev-Harness** orchestrator. Originally built as a React/Vite progressive web app, it is now wrapped natively using **Capacitor** to run as a full Android APK. 
 
-## Key Features
-*   **Run Review**: Open a run-linked escalation and inspect current run status and report data.
-*   **Escalation Decisions**: Receive human-in-the-loop requests directly in the app.
-*   **Runtime Device Config**: Store the backend URL locally on the device.
-*   **Operator Sign-In**: Authenticate with a username and password to receive a revocable operator session.
-*   **Session Authentication**: Uses Bearer session tokens for both read and response actions.
-*   **Web Push Alerts**: After sign-in, enable browser notifications and receive escalation alerts that deep-link into the matching escalation screen.
+It provides a mobile-first "Terminal" aesthetic, featuring native haptic feedback, to serve as a mobile control center for operators.
+
+## 📱 What this App Does
+This app allows a human operator to monitor and govern the AI agents running on the backend:
+*   **Run Creation**: Start new AI runs directly from your phone by pasting a spec or attaching an outline file.
+*   **Live Run Tracking**: Monitor active runs, see the number of slices pending/completed, and track the active generation/evaluation iteration loops.
+*   **Artifact Inspection**: Dive into the generated plans, review the Codex/Claude execution logs, and read policy verdicts.
+*   **Human-in-the-Loop Escalations**: When the AI gets stuck, it pauses and requests help. Use this app to read the agent's question, view the context (including evaluator critiques), and submit a binding decision to resume or block the run.
+*   **Operator Authentication**: Securely sign in to the backend using username and password to establish a revocable session.
+*   **Web Push Alerts**: Receive native push notifications when an escalation requires your attention, deep-linking you straight to the decision screen.
 
 ---
 
-## 🚀 Getting Started Locally
+## 🚀 Building the APK (GitHub Actions)
+
+You do not need to install Android Studio to build this app. A GitHub Action is configured to build the APK for you:
+1. Go to the **Actions** tab in your GitHub repository.
+2. Select **Build Android APK** from the left sidebar.
+3. Click **Run workflow**. 
+4. Once completed, the APK will be available to download from the newly created GitHub Release.
+
+---
+
+## 💻 Local Development
+
+If you want to modify the UI or run the app locally in a browser:
 
 ### Prerequisites
-*   Node.js (v18+)
+*   Node.js (v20+)
 *   npm or yarn
 *   A running instance of the `dev-harness` backend API.
 
@@ -25,22 +40,20 @@ npm install
 ```
 
 ### 2. Configure Environment Variables
-Copy the example environment file and fill in your specific details:
-
+Copy the example environment file:
 ```bash
 cp .env.example .env.local
 ```
-
 You may configure the following variable in your `.env.local`:
-*   `VITE_BACKEND_API_URL`: Optional default backend URL. If you are using **Tailscale**, this can be your machine's Tailscale IP (for example `http://100.x.y.z:8000`).
+*   `VITE_BACKEND_API_URL`: Optional default backend URL. If you are using **Tailscale**, this can be your machine's Tailscale IP (e.g., `http://100.x.y.z:8000`).
 
-The app now expects operator sign-in at runtime. Only the backend URL is configured in `.env.local`.
+*(Note: The app relies on runtime operator sign-in. The backend URL can also be changed within the app's settings tab).*
 
 ### 3. Run the Development Server
 ```bash
 npm run dev
 ```
-The application will be available at `http://localhost:3000` (or whichever port Vite assigns). It is configured to host on `0.0.0.0` so you can easily access it from your physical mobile device over your Tailscale network.
+The application will be available at `http://localhost:3000`.
 
 ---
 
@@ -52,11 +65,10 @@ The app communicates with the `dev-harness` FastAPI backend through `src/service
 The TypeScript interfaces in `src/types.ts` are mapped directly to the backend's Pydantic schemas (using `snake_case` properties like `run_id` and `created_at`).
 
 ### Authentication Flow
-1.  The operator enters the backend URL in the app.
-2.  The operator signs in with username and password.
+1.  The operator enters the backend URL in the app's config tab.
+2.  The operator signs in with a username and password.
 3.  The backend returns a revocable session token.
-4.  Fetching Runs, Run Reports, Escalations, and responding to escalations all use `Authorization: Bearer <session-token>`.
-5.  If Web Push is enabled on the backend, the app can register this device through the service worker and receive escalation notifications.
+4.  All actions (fetching runs, reading artifacts, resolving escalations) use `Authorization: Bearer <session-token>`.
 
 ---
 
