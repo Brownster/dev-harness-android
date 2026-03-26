@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { motion, useScroll, useMotionValue, useTransform, animate } from 'motion/react';
+import { useEffect, useCallback } from 'react';
+import { motion, useMotionValue, useTransform, animate } from 'motion/react';
 import { RefreshCw } from 'lucide-react';
 
 /**
@@ -24,7 +24,6 @@ export const triggerHaptic = (type: 'light' | 'medium' | 'heavy' | 'success' | '
  * Pull to refresh component
  */
 export const PullToRefresh = ({ onRefresh }: { onRefresh: () => Promise<void> }) => {
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const y = useMotionValue(0);
   const rotate = useTransform(y, [0, 100], [0, 360]);
   const opacity = useTransform(y, [0, 50, 100], [0, 0.5, 1]);
@@ -54,14 +53,12 @@ export const PullToRefresh = ({ onRefresh }: { onRefresh: () => Promise<void> })
       window.removeEventListener('touchend', handleTouchEnd);
 
       if (y.get() >= 80) {
-        setIsRefreshing(true);
         triggerHaptic('medium');
         animate(y, 80, { type: 'spring', stiffness: 300, damping: 30 });
         
         await onRefresh();
         
         triggerHaptic('success');
-        setIsRefreshing(false);
         animate(y, 0, { type: 'spring', stiffness: 300, damping: 30 });
       } else {
         animate(y, 0, { type: 'spring', stiffness: 300, damping: 30 });
@@ -84,8 +81,7 @@ export const PullToRefresh = ({ onRefresh }: { onRefresh: () => Promise<void> })
     >
       <div className="bg-surface-container-highest p-3 rounded-full shadow-xl border border-primary/20 flex items-center justify-center">
         <motion.div
-          animate={isRefreshing ? { rotate: 360 } : { rotate: rotate.get() }}
-          transition={isRefreshing ? { repeat: Infinity, duration: 1, ease: 'linear' } : { duration: 0 }}
+          style={{ rotate }}
         >
           <RefreshCw className="w-5 h-5 text-primary" />
         </motion.div>

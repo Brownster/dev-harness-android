@@ -18,15 +18,19 @@ interface StatusBadgeProps {
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const getStatusStyles = (s: string) => {
     switch (s.toLowerCase()) {
+      case 'connected':
       case 'running':
       case 'active':
       case 'open':
         return 'text-secondary bg-secondary/10 border-secondary/20';
+      case 'token auth':
+      case 'operator session':
       case 'completed':
       case 'resolved':
         return 'text-primary bg-primary/10 border-primary/20';
       case 'failed':
         return 'text-error bg-error/10 border-error/20';
+      case 'configuration required':
       case 'paused':
       case 'pending':
         return 'text-tertiary bg-tertiary/10 border-tertiary/20';

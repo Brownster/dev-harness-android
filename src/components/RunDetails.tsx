@@ -1,80 +1,111 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { motion } from 'motion/react';
-import { Activity, Clock, Database, GitBranch, Terminal } from 'lucide-react';
-import { Run } from '../types';
+import { useState } from 'react';
+import { Activity, Clock, GitBranch, Terminal, Layers, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Run, RunReportResponse } from '../types';
 import { StatusBadge } from './StatusBadge';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface RunDetailsProps {
   run: Run;
+  report: RunReportResponse | null;
+  activeIterationLabel?: string | null;
+  activeIterationDetail?: string | null;
 }
 
-export function RunDetails({ run }: RunDetailsProps) {
+function MetricPill({ icon: Icon, label, value, color }: { icon: any, label: string, value: string | number, color: 'primary' | 'secondary' | 'tertiary' }) {
+  const colorMap = {
+    primary: 'bg-primary/10 text-primary',
+    secondary: 'bg-secondary/10 text-secondary',
+    tertiary: 'bg-tertiary/10 text-tertiary',
+  };
   return (
-    <div className="space-y-6">
-      {/* Run Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center flex-shrink-0">
-              <Terminal className="text-primary w-6 h-6" />
-            </div>
-            <h2 className="font-headline text-2xl sm:text-3xl font-bold tracking-tight">{run.name}</h2>
+    <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/5">
+      <div className={cn("w-5 h-5 rounded-full flex items-center justify-center", colorMap[color])}>
+        <Icon className="w-3 h-3" />
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="font-label text-[9px] uppercase tracking-widest text-on-surface-variant">{label}:</span>
+        <span className="font-headline font-bold text-xs">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+export function RunDetails({
+  run,
+  report,
+  activeIterationLabel = null,
+  activeIterationDetail = null,
+}: RunDetailsProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <div className="space-y-4 bg-surface-container p-4 rounded-xl border border-outline-variant/10">
+      {/* Compact Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded bg-surface-container-highest flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Terminal className="text-primary w-4 h-4" />
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 bg-surface-container-highest rounded border border-outline-variant/10">
-              <GitBranch className="text-on-surface-variant w-3.5 h-3.5" />
-              <span className="text-[10px] font-mono text-on-surface-variant">ID: {run.id}</span>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-headline text-lg font-bold tracking-tight leading-none">
+                {run.repo_name}
+              </h2>
+              <StatusBadge status={run.status} />
+              {run.baseline_status && <StatusBadge status={run.baseline_status} />}
             </div>
-            <StatusBadge status={run.status} />
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <div className="flex items-center gap-1">
+                <GitBranch className="text-on-surface-variant w-3 h-3" />
+                <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                  {run.base_branch}
+                </span>
+              </div>
+              <span className="text-outline-variant text-[10px]">•</span>
+              <span className="text-[10px] font-mono text-on-surface-variant">ID: {run.run_id}</span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-on-surface-variant">
-          <Clock className="w-3.5 h-3.5" />
-          <span className="font-label text-[10px] uppercase tracking-widest">Updated {new Date(run.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <div className="flex items-center gap-1.5 text-on-surface-variant">
+          <Clock className="w-3 h-3" />
+          <span className="font-label text-[9px] uppercase tracking-widest">
+            {new Date(run.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
         </div>
       </div>
 
-      {/* Description */}
-      <div className="bg-surface-container p-6 rounded-xl border border-outline-variant/5">
-        <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant block mb-2">Run Description</span>
-        <p className="text-on-surface-variant leading-relaxed text-sm">
-          {run.description}
-        </p>
+      {/* Metrics Row */}
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-outline-variant/5">
+        <MetricPill icon={Layers} label="Slices" value={`${report?.summary.pending_slices ?? '-'}/${report?.summary.total_slices ?? '-'}`} color="primary" />
+        {activeIterationLabel && (
+           <MetricPill icon={Activity} label="Iteration" value={activeIterationLabel} color="secondary" />
+        )}
+        <MetricPill icon={Layers} label="Total Iters" value={report?.summary.total_iterations ?? '-'} color="primary" />
+        <MetricPill icon={AlertTriangle} label="Escalations" value={report?.summary.total_escalations ?? '-'} color="tertiary" />
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/5 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Activity className="text-primary w-5 h-5" />
+      {/* Collapsible Spec */}
+      <div>
+        <button 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 w-full text-left pt-2 pb-1 text-on-surface-variant hover:text-on-surface transition-colors"
+        >
+          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          <span className="font-label text-[10px] uppercase tracking-widest">Run Specification</span>
+        </button>
+        
+        {isExpanded && (
+          <div className="mt-2 bg-surface-container-low p-4 rounded-lg border border-outline-variant/5">
+            <p className="text-on-surface-variant leading-relaxed text-sm whitespace-pre-wrap">
+              {run.spec_text}
+            </p>
           </div>
-          <div>
-            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant block">Active Slices</span>
-            <span className="font-headline font-bold text-xl">12</span>
-          </div>
-        </div>
-        <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/5 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center">
-            <Database className="text-secondary w-5 h-5" />
-          </div>
-          <div>
-            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant block">CPU Load</span>
-            <span className="font-headline font-bold text-xl">24%</span>
-          </div>
-        </div>
-        <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/5 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-tertiary/10 flex items-center justify-center">
-            <Terminal className="text-tertiary w-5 h-5" />
-          </div>
-          <div>
-            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant block">Memory</span>
-            <span className="font-headline font-bold text-xl">8.2GB</span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

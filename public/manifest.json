@@ -2,7 +2,7 @@
   "name": "Dev-Harness",
   "short_name": "Harness",
   "description": "Agentic Dev Harness Orchestrator",
-  "start_url": "/",
+  "start_url": "/#/",
   "display": "standalone",
   "background_color": "#0b1326",
   "theme_color": "#0b1326",

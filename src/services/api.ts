@@ -1,81 +1,258 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import {
+  ArtifactContent,
+  Escalation,
+  EscalationResponseInput,
+  OperatorCurrentSessionResponse,
+  OperatorSessionResponse,
+  PlanningResponse,
+  PushConfigResponse,
+  PushSubscriptionResponse,
+  Run,
+  RunCreateInput,
+  RunEvent,
+  RunReportResponse,
+  Slice,
+} from '../types';
+import { loadRuntimeConfig } from './runtimeConfig';
 
-import CryptoJS from 'crypto-js';
-import { Run, Escalation, EscalationResponse } from '../types';
+function getConfiguredBaseUrl(): string {
+  const { apiBaseUrl } = loadRuntimeConfig();
+  if (!apiBaseUrl) {
+    throw new Error('Missing backend URL. Open Settings and configure this device.');
+  }
+  return apiBaseUrl;
+}
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
-const SHARED_SECRET = import.meta.env.VITE_HARNESS_SHARED_SECRET || 'dev-secret';
+function getAuthHeaders(): Record<string, string> {
+  const { sessionToken } = loadRuntimeConfig();
+  if (!sessionToken) {
+    throw new Error('Missing operator session. Open Settings and sign in.');
+  }
+  return {
+    Authorization: `Bearer ${sessionToken}`,
+  };
+}
 
-/**
- * Signs the request body using HMAC SHA256.
- */
-function generateSignature(body: string): string {
-  const hash = CryptoJS.HmacSHA256(body, SHARED_SECRET);
-  return `sha256=${CryptoJS.enc.Hex.stringify(hash)}`;
+async function parseResponse<T>(response: Response, resourceName: string): Promise<T> {
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(
+      `${resourceName} request failed (${response.status}): ${detail || response.statusText}`,
+    );
+  }
+  return response.json() as Promise<T>;
 }
 
 export const api = {
-  async getRun(runId: string): Promise<Run> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/runs/${runId}`);
-    if (!response.ok) throw new Error(`Failed to fetch run: ${response.statusText}`);
-    return response.json();
-  },
-
-  async getEscalation(escalationId: string): Promise<Escalation> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/escalations/${escalationId}`);
-    if (!response.ok) throw new Error(`Failed to fetch escalation: ${response.statusText}`);
-    return response.json();
-  },
-
-  async respondToEscalation(escalationId: string, payload: EscalationResponse): Promise<void> {
-    const body = JSON.stringify(payload);
-    const signature = generateSignature(body);
-
-    const response = await fetch(`${API_BASE_URL}/api/v1/escalations/${escalationId}/respond`, {
+  async createOperatorSession(
+    apiBaseUrl: string,
+    username: string,
+    password: string,
+  ): Promise<OperatorSessionResponse> {
+    const response = await fetch(`${apiBaseUrl.replace(/\/+$/, '')}/api/v1/operator/session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Harness-Signature': signature,
       },
-      body,
+      body: JSON.stringify({ username, password }),
     });
-
-    if (!response.ok) throw new Error(`Failed to respond to escalation: ${response.statusText}`);
+    return parseResponse<OperatorSessionResponse>(response, 'Operator session');
   },
-};
 
-// Mock data for development when backend is not available
-export const mockApi = {
-  async getRun(runId: string): Promise<Run> {
-    await new Promise(r => setTimeout(r, 500));
-    return {
-      id: runId,
-      name: "Refactor Auth Middleware",
-      status: 'paused',
-      description: "Implementing JWT with rotating keys for the internal API gateway.",
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-      updatedAt: new Date().toISOString(),
+  async getCurrentOperatorSession(): Promise<OperatorCurrentSessionResponse> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/session`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<OperatorCurrentSessionResponse>(response, 'Current session');
+  },
+
+  async revokeCurrentOperatorSession(): Promise<void> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/session`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(
+        `Operator sign-out failed (${response.status}): ${detail || response.statusText}`,
+      );
+    }
+  },
+
+  async getPushConfig(): Promise<PushConfigResponse> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/push/config`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<PushConfigResponse>(response, 'Push config');
+  },
+
+  async registerPushSubscription(payload: {
+    endpoint: string;
+    keys: {
+      p256dh: string;
+      auth: string;
     };
+  }): Promise<PushSubscriptionResponse> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/push/subscriptions`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    return parseResponse<PushSubscriptionResponse>(response, 'Push subscription');
+  },
+
+  async listPushSubscriptions(): Promise<PushSubscriptionResponse[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/push/subscriptions`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<PushSubscriptionResponse[]>(response, 'Push subscriptions');
+  },
+
+  async unregisterPushSubscription(endpoint: string): Promise<void> {
+    const response = await fetch(
+      `${getConfiguredBaseUrl()}/api/v1/operator/push/subscriptions/remove`,
+      {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ endpoint }),
+      },
+    );
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(
+        `Push unsubscribe failed (${response.status}): ${detail || response.statusText}`,
+      );
+    }
+  },
+
+  async getRun(runId: string): Promise<Run> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<Run>(response, 'Run');
+  },
+
+  async listRuns(): Promise<Run[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<Run[]>(response, 'Runs');
+  },
+
+  async createRun(payload: RunCreateInput): Promise<Run> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    return parseResponse<Run>(response, 'Create run');
+  },
+
+  async getRunEvents(runId: string): Promise<RunEvent[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/events`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<RunEvent[]>(response, 'Run events');
   },
 
   async getEscalation(escalationId: string): Promise<Escalation> {
-    await new Promise(r => setTimeout(r, 500));
-    return {
-      id: escalationId,
-      runId: "run-123",
-      question: "The JWKS endpoint is returning a 403 Forbidden. Should we retry with the fallback credentials or block the execution?",
-      options: ["retry", "block", "manual_override"],
-      kind: 'execution_error',
-      status: 'open',
-      createdAt: new Date().toISOString(),
-    };
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/escalations/${escalationId}`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<Escalation>(response, 'Escalation');
   },
 
-  async respondToEscalation(escalationId: string, payload: EscalationResponse): Promise<void> {
-    await new Promise(r => setTimeout(r, 800));
-    console.log(`[Mock API] Responded to ${escalationId}:`, payload);
+  async getRunReport(runId: string): Promise<RunReportResponse> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/report`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<RunReportResponse>(response, 'Run report');
+  },
+
+  async planRun(runId: string): Promise<PlanningResponse> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/plan`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ force: false }),
+    });
+    return parseResponse<PlanningResponse>(response, 'Plan run');
+  },
+
+  async listSlices(runId: string): Promise<Slice[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/slices`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<Slice[]>(response, 'Run slices');
+  },
+
+  async listRunEscalations(runId: string): Promise<Escalation[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/escalations`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<Escalation[]>(response, 'Run escalations');
+  },
+
+  async getRunArtifact(runId: string, artifactId: number): Promise<ArtifactContent> {
+    const response = await fetch(
+      `${getConfiguredBaseUrl()}/api/v1/runs/${runId}/artifacts/${artifactId}`,
+      {
+        headers: getAuthHeaders(),
+      },
+    );
+    return parseResponse<ArtifactContent>(response, 'Run artifact');
+  },
+
+  async executeNextSlice(runId: string): Promise<{
+    run_id: string;
+    slice_id: string;
+    run_status: string;
+    slice_status: string;
+  }> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/execute-next`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<{
+      run_id: string;
+      slice_id: string;
+      run_status: string;
+      slice_status: string;
+    }>(response, 'Execute next slice');
+  },
+
+  async respondToEscalation(
+    escalationId: string,
+    payload: EscalationResponseInput,
+  ): Promise<void> {
+    const response = await fetch(
+      `${getConfiguredBaseUrl()}/api/v1/escalations/${escalationId}/respond`,
+      {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(
+        `Escalation response failed (${response.status}): ${detail || response.statusText}`,
+      );
+    }
   },
 };
