@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { api } from '../services/api';
+import { ApiError, api, NetworkRequestError } from '../services/api';
 import {
   DEFAULT_PUSH_STATUS,
   disablePushNotifications,
@@ -11,27 +11,63 @@ import {
   type PushNotificationStatus,
 } from '../services/pushNotifications';
 import {
+  clearAppPin,
+  clearRuntimeConfig,
+  isAppPinConfigured,
   loadRecentEscalationIds,
   loadRuntimeConfig,
   rememberRecentEscalationId,
   saveRuntimeConfig,
+  saveAppPin,
   type HarnessRuntimeConfig,
   isRuntimeConfigComplete,
+  verifyAppPin,
 } from '../services/runtimeConfig';
-import type { RepositoryOption, Run, RunCreateInput } from '../types';
+import type {
+  OperatorConnectionStatus,
+  RepositoryPolicy,
+  RepositoryOption,
+  Run,
+  RunCreateInput,
+  RunDeliverySummary,
+} from '../types';
+
+const DEFAULT_CONNECTION_STATUS: OperatorConnectionStatus = {
+  backend_state: 'unconfigured',
+  backend_message: 'Set the backend URL for this device.',
+  session_state: 'signed_out',
+  session_message: 'Sign in to start and govern runs.',
+  last_checked_at: null,
+};
 
 export function useOperatorConsole() {
   const [runtimeConfig, setRuntimeConfig] = useState<HarnessRuntimeConfig>(loadRuntimeConfig());
   const [recentEscalationIds, setRecentEscalationIds] = useState<string[]>(loadRecentEscalationIds());
   const [pushStatus, setPushStatus] = useState<PushNotificationStatus>(DEFAULT_PUSH_STATUS);
+  const [connectionStatus, setConnectionStatus] =
+    useState<OperatorConnectionStatus>(DEFAULT_CONNECTION_STATUS);
   const [repositories, setRepositories] = useState<RepositoryOption[]>([]);
+  const [repositoryPolicy, setRepositoryPolicy] = useState<RepositoryPolicy | null>(null);
   const [repositoriesLoading, setRepositoriesLoading] = useState(false);
   const [repositoriesError, setRepositoriesError] = useState<string | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
   const [runsError, setRunsError] = useState<string | null>(null);
+  const [runDeliverySummaries, setRunDeliverySummaries] = useState<Record<string, RunDeliverySummary | null>>({});
+  const [pinConfigured, setPinConfigured] = useState<boolean>(isAppPinConfigured());
+  const [appLocked, setAppLocked] = useState<boolean>(isAppPinConfigured());
 
   const authenticated = isRuntimeConfigComplete(runtimeConfig);
+
+  const markConnectionChecked = useCallback(
+    (next: Omit<OperatorConnectionStatus, 'last_checked_at'>) => {
+      setConnectionStatus({
+        ...next,
+        last_checked_at: new Date().toISOString(),
+      });
+    },
+    [],
+  );
 
   const refreshRuns = useCallback(async () => {
     if (!isRuntimeConfigComplete(loadRuntimeConfig())) {
@@ -55,6 +91,7 @@ export function useOperatorConsole() {
   const refreshRepositories = useCallback(async () => {
     if (!isRuntimeConfigComplete(loadRuntimeConfig())) {
       setRepositories([]);
+      setRepositoryPolicy(null);
       setRepositoriesError(null);
       setRepositoriesLoading(false);
       return;
@@ -63,9 +100,15 @@ export function useOperatorConsole() {
     setRepositoriesLoading(true);
     setRepositoriesError(null);
     try {
-      setRepositories(await api.listAvailableRepositories());
+      const [nextRepositories, nextRepositoryPolicy] = await Promise.all([
+        api.listAvailableRepositories(),
+        api.getRepositoryPolicy(),
+      ]);
+      setRepositories(nextRepositories);
+      setRepositoryPolicy(nextRepositoryPolicy);
     } catch (repoError) {
       setRepositories([]);
+      setRepositoryPolicy(null);
       setRepositoriesError(
         repoError instanceof Error ? repoError.message : 'Failed to load repositories.',
       );
@@ -79,27 +122,66 @@ export function useOperatorConsole() {
     setRuntimeConfig(currentConfig);
     setRecentEscalationIds(loadRecentEscalationIds());
 
-    if (!isRuntimeConfigComplete(currentConfig)) {
+    if (!currentConfig.apiBaseUrl) {
+      markConnectionChecked(DEFAULT_CONNECTION_STATUS);
       return;
     }
 
     try {
+      await api.checkBackendReady(currentConfig.apiBaseUrl);
+      if (!currentConfig.sessionToken) {
+        markConnectionChecked({
+          backend_state: 'reachable',
+          backend_message: `Backend reachable at ${currentConfig.apiBaseUrl}.`,
+          session_state: 'signed_out',
+          session_message: 'Sign in to this backend to continue.',
+        });
+        return;
+      }
+
       const current = await api.getCurrentOperatorSession();
-      setRuntimeConfig(
-        saveRuntimeConfig({
-          ...currentConfig,
-          username: current.operator.username,
-        }),
-      );
-    } catch {
+      const nextConfig = saveRuntimeConfig({
+        ...currentConfig,
+        username: current.operator.username,
+      });
+      setRuntimeConfig(nextConfig);
+      markConnectionChecked({
+        backend_state: 'reachable',
+        backend_message: `Backend reachable at ${currentConfig.apiBaseUrl}.`,
+        session_state: 'active',
+        session_message: `Signed in as ${current.operator.username}.`,
+      });
+    } catch (error) {
+      if (error instanceof NetworkRequestError) {
+        markConnectionChecked({
+          backend_state: 'unreachable',
+          backend_message: error.message,
+          session_state: currentConfig.sessionToken ? 'unknown' : 'signed_out',
+          session_message: currentConfig.sessionToken
+            ? 'Saved session cannot be verified while the backend is unreachable.'
+            : 'Backend is unreachable, so sign-in is unavailable.',
+        });
+        return;
+      }
+
       const nextConfig = saveRuntimeConfig({
         apiBaseUrl: currentConfig.apiBaseUrl,
         sessionToken: '',
         username: '',
       });
       setRuntimeConfig(nextConfig);
+      markConnectionChecked({
+        backend_state: 'reachable',
+        backend_message: `Backend reachable at ${currentConfig.apiBaseUrl}.`,
+        session_state:
+          error instanceof ApiError && error.status === 401 ? 'expired' : 'signed_out',
+        session_message:
+          error instanceof ApiError && error.status === 401
+            ? 'Saved operator session expired. Sign in again.'
+            : 'Operator session is not active on this device.',
+      });
     }
-  }, []);
+  }, [markConnectionChecked]);
 
   useEffect(() => {
     void syncCurrentOperator();
@@ -153,6 +235,58 @@ export function useOperatorConsole() {
   }, [runtimeConfig.apiBaseUrl, runtimeConfig.sessionToken, refreshRuns]);
 
   useEffect(() => {
+    if (!authenticated) {
+      setRunDeliverySummaries({});
+      return;
+    }
+
+    const completedRuns = runs.filter((run) => run.status === 'RUN_COMPLETE');
+    if (completedRuns.length === 0) {
+      setRunDeliverySummaries({});
+      return;
+    }
+
+    const missingRunIds = completedRuns
+      .map((run) => run.run_id)
+      .filter((runId) => !(runId in runDeliverySummaries));
+
+    if (missingRunIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const results = await Promise.all(
+        missingRunIds.map(async (runId) => {
+          try {
+            const report = await api.getRunReport(runId);
+            return { runId, delivery: report.delivery };
+          } catch {
+            return { runId, delivery: null };
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      setRunDeliverySummaries((current) => {
+        const next = { ...current };
+        for (const result of results) {
+          next[result.runId] = result.delivery;
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, runDeliverySummaries, runs]);
+
+  useEffect(() => {
     void refreshRepositories();
   }, [runtimeConfig.apiBaseUrl, runtimeConfig.sessionToken, refreshRepositories]);
 
@@ -162,6 +296,11 @@ export function useOperatorConsole() {
       apiBaseUrl,
     });
     setRuntimeConfig(nextConfig);
+    setConnectionStatus({
+      ...DEFAULT_CONNECTION_STATUS,
+      backend_state: 'unconfigured',
+      backend_message: 'Checking backend…',
+    });
   }, []);
 
   const handleLogin = useCallback(
@@ -178,6 +317,12 @@ export function useOperatorConsole() {
         username: session.operator.username,
       });
       setRuntimeConfig(nextConfig);
+      markConnectionChecked({
+        backend_state: 'reachable',
+        backend_message: `Backend reachable at ${currentConfig.apiBaseUrl}.`,
+        session_state: 'active',
+        session_message: `Signed in as ${session.operator.username}.`,
+      });
       try {
         await syncPushNotifications(true);
         await refreshPushStatus();
@@ -202,12 +347,20 @@ export function useOperatorConsole() {
     if (currentConfig.sessionToken) {
       await api.revokeCurrentOperatorSession();
     }
-    const nextConfig = saveRuntimeConfig({
-      apiBaseUrl: currentConfig.apiBaseUrl,
-      sessionToken: '',
-      username: '',
-    });
-    setRuntimeConfig(nextConfig);
+      const nextConfig = saveRuntimeConfig({
+        apiBaseUrl: currentConfig.apiBaseUrl,
+        sessionToken: '',
+        username: '',
+      });
+      setRuntimeConfig(nextConfig);
+      markConnectionChecked({
+        backend_state: currentConfig.apiBaseUrl ? 'reachable' : 'unconfigured',
+        backend_message: currentConfig.apiBaseUrl
+          ? `Backend reachable at ${currentConfig.apiBaseUrl}.`
+          : 'Set the backend URL for this device.',
+        session_state: 'signed_out',
+        session_message: 'Signed out on this device.',
+      });
   }, [pushStatus.subscribed]);
 
   const handleEnablePush = useCallback(async () => {
@@ -282,16 +435,77 @@ export function useOperatorConsole() {
     [refreshRuns],
   );
 
+  const handleUnlockWithPin = useCallback(async (pin: string) => {
+    const valid = await verifyAppPin(pin);
+    if (!valid) {
+      throw new Error('Incorrect PIN.');
+    }
+    setAppLocked(false);
+  }, []);
+
+  const handleSetPin = useCallback(async (pin: string) => {
+    await saveAppPin(pin);
+    setPinConfigured(true);
+    setAppLocked(false);
+  }, []);
+
+  const handleChangePin = useCallback(async (currentPin: string, nextPin: string) => {
+    const valid = await verifyAppPin(currentPin);
+    if (!valid) {
+      throw new Error('Current PIN is incorrect.');
+    }
+    await saveAppPin(nextPin);
+    setPinConfigured(true);
+    setAppLocked(false);
+  }, []);
+
+  const handleRemovePin = useCallback(async (currentPin: string) => {
+    const valid = await verifyAppPin(currentPin);
+    if (!valid) {
+      throw new Error('Current PIN is incorrect.');
+    }
+    clearAppPin();
+    setPinConfigured(false);
+    setAppLocked(false);
+  }, []);
+
+  const handleLockNow = useCallback(() => {
+    if (!isAppPinConfigured()) {
+      return;
+    }
+    setAppLocked(true);
+  }, []);
+
+  const handleResetLocalAccess = useCallback(() => {
+    clearAppPin();
+    clearRuntimeConfig();
+    setPinConfigured(false);
+    setAppLocked(false);
+    setRuntimeConfig(loadRuntimeConfig());
+    setRepositories([]);
+    setRepositoryPolicy(null);
+    setRuns([]);
+    setRunDeliverySummaries({});
+    setRecentEscalationIds(loadRecentEscalationIds());
+    setPushStatus(DEFAULT_PUSH_STATUS);
+    setConnectionStatus(DEFAULT_CONNECTION_STATUS);
+  }, []);
+
   return {
     runtimeConfig,
+    connectionStatus,
     recentEscalationIds,
     pushStatus,
     repositories,
+    repositoryPolicy,
     repositoriesLoading,
     repositoriesError,
     runs,
     runsLoading,
     runsError,
+    runDeliverySummaries,
+    pinConfigured,
+    appLocked,
     authenticated,
     handleSaveApiBaseUrl,
     handleLogin,
@@ -302,5 +516,11 @@ export function useOperatorConsole() {
     handleEscalationSeen,
     handleRefresh,
     handleCreateRun,
+    handleUnlockWithPin,
+    handleSetPin,
+    handleChangePin,
+    handleRemovePin,
+    handleLockNow,
+    handleResetLocalAccess,
   };
 }

@@ -6,11 +6,27 @@
 export type RunStatus = 'running' | 'completed' | 'failed' | 'paused';
 export type EscalationStatus = 'open' | 'resolved';
 export type EscalationKind = 'plan_review' | 'execution_error' | 'configuration_needed';
+export type BackendConnectionState = 'unconfigured' | 'reachable' | 'unreachable';
+export type OperatorSessionState = 'signed_out' | 'active' | 'expired' | 'unknown';
+
+export interface OperatorConnectionStatus {
+  backend_state: BackendConnectionState;
+  backend_message: string;
+  session_state: OperatorSessionState;
+  session_message: string;
+  last_checked_at: string | null;
+}
 
 export interface Run {
   run_id: string;
+  intake_mode: string;
   repo_path: string;
+  repo_url?: string | null;
   repo_name: string;
+  repo_host?: string | null;
+  repo_owner?: string | null;
+  repo_slug?: string | null;
+  clone_mode: string;
   base_branch: string;
   workspace_path: string;
   head_sha_at_start: string | null;
@@ -27,6 +43,14 @@ export interface Run {
   resume_after?: string | null;
   pause_reason?: string | null;
   spec_text: string;
+  issue_title?: string | null;
+  issue_url?: string | null;
+  issue_body?: string | null;
+  feature_request_text?: string | null;
+  target_branch?: string | null;
+  auto_deliver?: boolean;
+  push_on_complete?: boolean;
+  delivery_remote_name?: string;
   policy_pack: string;
   created_at: string;
   updated_at: string;
@@ -97,9 +121,18 @@ export interface RunEventEnvelope {
 }
 
 export interface RunCreateInput {
-  repo_path: string;
+  repo_path?: string;
+  repo_url?: string;
   base_branch: string;
   spec_text: string;
+  issue_title?: string;
+  issue_url?: string;
+  issue_body?: string;
+  feature_request_text?: string;
+  target_branch?: string;
+  auto_deliver?: boolean;
+  push_on_complete?: boolean;
+  delivery_remote_name?: string;
   spec_attachment_name?: string;
   spec_attachment_content?: string;
   policy_pack: string;
@@ -111,6 +144,13 @@ export interface RepositoryOption {
   root_path: string;
   relative_path: string;
   current_branch?: string | null;
+}
+
+export interface RepositoryPolicy {
+  local_roots: string[];
+  remote_enabled: boolean;
+  allowed_remote_hosts: string[];
+  allowed_remote_owners: string[];
 }
 
 export interface PlanningResponse {
@@ -159,8 +199,21 @@ export interface RunReportResponse {
   run_id: string;
   status: string;
   summary: RunReportSummary;
+  delivery: RunDeliverySummary | null;
   markdown: string;
   artifact_paths: string[];
+}
+
+export interface RunDeliverySummary {
+  branch_name: string;
+  commit_sha: string;
+  commit_message: string;
+  pushed: boolean;
+  remote_name: string | null;
+  remote_url_redacted: string | null;
+  push_error: string | null;
+  changed_files: string[];
+  delivered_at: string;
 }
 
 export interface OperatorSessionActor {

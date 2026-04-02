@@ -6,16 +6,24 @@ import {
 } from '../components/dashboard/DashboardPanels';
 import { PullToRefresh } from '../components/NativeInteractions';
 import { cn } from '../lib/cn';
-import type { RepositoryOption, Run, RunCreateInput } from '../types';
+import type {
+  RepositoryOption,
+  RepositoryPolicy,
+  Run,
+  RunCreateInput,
+  RunDeliverySummary,
+} from '../types';
 
 export interface DashboardViewProps {
   authenticated: boolean;
   repositories: RepositoryOption[];
+  repositoryPolicy: RepositoryPolicy | null;
   repositoriesLoading: boolean;
   repositoriesError: string | null;
   runs: Run[];
   runsLoading: boolean;
   runsError: string | null;
+  runDeliverySummaries: Record<string, RunDeliverySummary | null>;
   onOpenRun: (id: string) => void;
   onRefresh: () => Promise<void>;
   onCreateRun: (payload: RunCreateInput) => Promise<void>;
@@ -24,11 +32,13 @@ export interface DashboardViewProps {
 export function DashboardView({
   authenticated,
   repositories,
+  repositoryPolicy,
   repositoriesLoading,
   repositoriesError,
   runs,
   runsLoading,
   runsError,
+  runDeliverySummaries,
   onOpenRun,
   onRefresh,
   onCreateRun,
@@ -69,6 +79,7 @@ export function DashboardView({
           <RunCreationPanel
             authenticated={authenticated}
             repositories={repositories}
+            repositoryPolicy={repositoryPolicy}
             repositoriesLoading={repositoriesLoading}
             repositoriesError={repositoriesError}
             onCreateRun={onCreateRun}
@@ -78,6 +89,7 @@ export function DashboardView({
             authenticated={authenticated}
             runs={runs}
             runsError={runsError}
+            runDeliverySummaries={runDeliverySummaries}
             onOpenRun={onOpenRun}
           />
         )}

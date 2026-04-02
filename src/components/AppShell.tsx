@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Bell,
   ExternalLink,
   LayoutDashboard,
+  Lock,
   MessageSquare,
   Settings,
   Terminal,
@@ -11,6 +12,8 @@ import {
 } from 'lucide-react';
 
 import { cn } from '../lib/cn';
+import { StatusBadge } from './StatusBadge';
+import type { OperatorConnectionStatus } from '../types';
 
 interface AppHeaderProps {
   authenticated: boolean;
@@ -18,6 +21,7 @@ interface AppHeaderProps {
   apiBaseUrl: string;
   registeredDevices: number;
   runCount: number;
+  connectionStatus: OperatorConnectionStatus;
   isMobilePreview: boolean;
   showDeepLinkSim: boolean;
   onHome: () => void;
@@ -30,12 +34,39 @@ export function AppHeader({
   apiBaseUrl,
   registeredDevices,
   runCount,
+  connectionStatus,
   isMobilePreview,
   showDeepLinkSim,
   onHome,
   onToggleDeepLinkSim,
 }: AppHeaderProps) {
   const [showSessionInfo, setShowSessionInfo] = useState(false);
+  const badgeLabel =
+    connectionStatus.session_state === 'active'
+      ? username || 'Signed in'
+      : connectionStatus.backend_state === 'unreachable'
+        ? 'Backend offline'
+        : connectionStatus.session_state === 'expired'
+          ? 'Session expired'
+          : connectionStatus.backend_state === 'reachable'
+            ? 'Signed out'
+            : 'Needs setup';
+  const sessionBadgeStatus =
+    connectionStatus.session_state === 'active'
+      ? 'operator session'
+      : connectionStatus.backend_state === 'unreachable'
+        ? 'failed'
+        : connectionStatus.session_state === 'expired'
+          ? 'paused'
+          : connectionStatus.backend_state === 'reachable'
+            ? 'connected'
+            : 'configuration required';
+  const backendBadgeStatus =
+    connectionStatus.backend_state === 'reachable'
+      ? 'connected'
+      : connectionStatus.backend_state === 'unreachable'
+        ? 'failed'
+        : 'configuration required';
 
   return (
     <header
@@ -70,7 +101,7 @@ export function AppHeader({
             className="px-3 py-1 rounded-full bg-surface-container-high border border-outline-variant/20"
           >
             <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-              {authenticated ? username || 'Signed in' : 'Needs sign-in'}
+              {badgeLabel}
             </span>
           </button>
           <AnimatePresence>
@@ -85,8 +116,12 @@ export function AppHeader({
                   <div>
                     <p className="font-headline text-sm font-bold">Session Context</p>
                     <p className="mt-1 font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                      {authenticated ? `Signed in as ${username}` : 'Not signed in'}
+                      {connectionStatus.session_message}
                     </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge status={backendBadgeStatus} />
+                    <StatusBadge status={sessionBadgeStatus} />
                   </div>
                   <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low px-3 py-2">
                     <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
@@ -94,6 +129,9 @@ export function AppHeader({
                     </p>
                     <p className="mt-1 break-all font-mono text-[11px] text-on-surface">
                       {apiBaseUrl || 'Not configured'}
+                    </p>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      {connectionStatus.backend_message}
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -153,6 +191,92 @@ export function DeepLinkSimulator({ open, onTrigger }: DeepLinkSimulatorProps) {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+interface PinUnlockScreenProps {
+  username: string | null | undefined;
+  onUnlock: (pin: string) => Promise<void>;
+  onResetLocalAccess: () => void;
+}
+
+export function PinUnlockScreen({
+  username,
+  onUnlock,
+  onResetLocalAccess,
+}: PinUnlockScreenProps) {
+  const [pin, setPin] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onUnlock(pin);
+      setPin('');
+    } catch (unlockError) {
+      setError(unlockError instanceof Error ? unlockError.message : 'Failed to unlock app.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low px-4 py-3">
+        <p className="text-sm font-medium text-on-surface">
+          {username ? `Stored session for ${username}` : 'Stored local session'}
+        </p>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Unlocking is local to this device. It does not contact the backend until the app is open.
+        </p>
+      </div>
+
+      <label className="block space-y-2">
+        <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+          PIN
+        </span>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={pin}
+            onChange={(event) => setPin(event.target.value)}
+            placeholder="4 to 8 digits"
+            className="w-full rounded-lg border border-outline-variant/10 bg-surface-container-low py-3 pl-10 pr-4 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary/30"
+          />
+        </div>
+      </label>
+
+      {error && (
+        <div className="rounded-lg border border-error/20 bg-error/10 px-4 py-3 text-sm text-error">
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="submit"
+          disabled={submitting || !pin.trim()}
+          className="flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-primary to-primary-container px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Lock className="w-4 h-4" />
+          Unlock
+        </button>
+        <button
+          type="button"
+          onClick={onResetLocalAccess}
+          disabled={submitting}
+          className="flex items-center justify-center gap-2 rounded-lg border border-outline-variant/10 bg-surface-container-low px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-surface"
+        >
+          Reset Local Access
+        </button>
+      </div>
+    </form>
   );
 }
 

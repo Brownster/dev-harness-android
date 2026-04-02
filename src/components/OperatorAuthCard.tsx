@@ -1,9 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { KeyRound, LogIn, LogOut, ShieldCheck, User } from 'lucide-react';
 
+import { StatusBadge } from './StatusBadge';
+import type { OperatorConnectionStatus } from '../types';
+
 interface OperatorAuthCardProps {
   authenticated: boolean;
   username: string;
+  connectionStatus: OperatorConnectionStatus;
   onLogin: (username: string, password: string) => Promise<void>;
   onLogout: () => Promise<void>;
 }
@@ -11,6 +15,7 @@ interface OperatorAuthCardProps {
 export function OperatorAuthCard({
   authenticated,
   username,
+  connectionStatus,
   onLogin,
   onLogout,
 }: OperatorAuthCardProps) {
@@ -59,6 +64,26 @@ export function OperatorAuthCard({
       </div>
 
       <div className="p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-outline-variant/10 bg-surface-container-low px-4 py-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-on-surface">Session Status</p>
+            <p className="text-sm text-on-surface-variant">{connectionStatus.session_message}</p>
+          </div>
+          <StatusBadge
+            status={
+              connectionStatus.session_state === 'active'
+                ? 'operator session'
+                : connectionStatus.session_state === 'expired'
+                  ? 'paused'
+                  : connectionStatus.backend_state === 'unconfigured'
+                    ? 'configuration required'
+                  : connectionStatus.backend_state === 'reachable'
+                    ? 'configuration required'
+                    : 'failed'
+            }
+          />
+        </div>
+
         {authenticated ? (
           <>
             <div className="flex items-start gap-3 rounded-lg border border-secondary/20 bg-secondary/10 px-4 py-3 text-sm text-on-surface">

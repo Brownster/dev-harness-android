@@ -7,6 +7,7 @@ import {
   BottomNav,
   DeepLinkSimulator,
   MobilePreviewToggle,
+  PinUnlockScreen,
 } from './components/AppShell';
 import { cn } from './lib/cn';
 import type { RunCreateInput } from './types';
@@ -17,18 +18,29 @@ import { AppRoutes } from './routes/AppRoutes';
 function MainLayout() {
   const {
     runtimeConfig,
+    connectionStatus,
+    pinConfigured,
+    appLocked,
     recentEscalationIds,
     pushStatus,
     repositories,
+    repositoryPolicy,
     repositoriesLoading,
     repositoriesError,
     runs,
     runsLoading,
     runsError,
+    runDeliverySummaries,
     authenticated,
     handleSaveApiBaseUrl,
     handleLogin,
     handleLogout,
+    handleUnlockWithPin,
+    handleSetPin,
+    handleChangePin,
+    handleRemovePin,
+    handleLockNow,
+    handleResetLocalAccess,
     handleEnablePush,
     handleDisablePush,
     handleSendTestPush,
@@ -57,11 +69,13 @@ function MainLayout() {
 
   const dashboardRoute = {
     repositories,
+    repositoryPolicy,
     repositoriesLoading,
     repositoriesError,
     runs,
     runsLoading,
     runsError,
+    runDeliverySummaries,
     onOpenRun: handleOpenRun,
     onRefresh: handleRefresh,
     onCreateRun: handleCreateRunAndOpen,
@@ -75,10 +89,16 @@ function MainLayout() {
 
   const settingsRoute = {
     config: runtimeConfig,
+    connectionStatus,
+    pinConfigured,
     pushStatus,
     onSaveApiBaseUrl: handleSaveApiBaseUrl,
     onLogin: handleLogin,
     onLogout: handleLogout,
+    onSetPin: handleSetPin,
+    onChangePin: handleChangePin,
+    onRemovePin: handleRemovePin,
+    onLockNow: handleLockNow,
     onEnablePush: handleEnablePush,
     onDisablePush: handleDisablePush,
     onSendTestPush: handleSendTestPush,
@@ -99,6 +119,7 @@ function MainLayout() {
         apiBaseUrl={runtimeConfig.apiBaseUrl}
         registeredDevices={pushStatus.registeredDevices}
         runCount={runs.length}
+        connectionStatus={connectionStatus}
         isMobilePreview={isMobilePreview}
         showDeepLinkSim={showDeepLinkSim}
         onHome={handleHome}
@@ -146,6 +167,33 @@ function MainLayout() {
       )}
     </div>
   );
+
+  if (pinConfigured && appLocked) {
+    return (
+      <div className="min-h-screen bg-surface-container-low flex items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-3xl border border-outline-variant/15 bg-surface-container p-6 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center">
+              <Terminal className="text-primary w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="font-headline text-2xl font-bold tracking-tight text-on-surface">
+                Unlock Terminal
+              </h1>
+              <p className="text-sm text-on-surface-variant">
+                Enter the local PIN for this device to reopen the stored operator session.
+              </p>
+            </div>
+          </div>
+          <PinUnlockScreen
+            username={runtimeConfig.username}
+            onUnlock={handleUnlockWithPin}
+            onResetLocalAccess={handleResetLocalAccess}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface-container-low flex flex-col items-center">

@@ -11,14 +11,36 @@ import {
   PlanningResponse,
   PushConfigResponse,
   PushSubscriptionResponse,
+  RepositoryPolicy,
   RepositoryOption,
   Run,
   RunCreateInput,
+  RunDeliverySummary,
   RunEvent,
   RunReportResponse,
   Slice,
 } from '../types';
 import { loadRuntimeConfig } from './runtimeConfig';
+
+export class ApiError extends Error {
+  status: number;
+
+  detail: string;
+
+  constructor(resourceName: string, status: number, detail: string) {
+    super(`${resourceName} request failed (${status}): ${detail}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+export class NetworkRequestError extends Error {
+  constructor(resourceName: string, message: string) {
+    super(`${resourceName} request failed: ${message}`);
+    this.name = 'NetworkRequestError';
+  }
+}
 
 function isNativeAndroidRuntime(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -48,8 +70,9 @@ function buildNetworkError(resourceName: string, baseUrl: string, error: unknown
       ? ` Native Android may not resolve the hostname "${hostname}" reliably. Try the same backend URL with a direct IP address instead.`
       : '';
 
-  return new Error(
-    `${resourceName} request failed: could not reach ${baseUrl}.${nativeHostnameHint}`,
+  return new NetworkRequestError(
+    resourceName,
+    `could not reach ${baseUrl}.${nativeHostnameHint}`,
   );
 }
 
@@ -74,14 +97,25 @@ function getAuthHeaders(): Record<string, string> {
 async function parseResponse<T>(response: Response, resourceName: string): Promise<T> {
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      `${resourceName} request failed (${response.status}): ${detail || response.statusText}`,
-    );
+    throw new ApiError(resourceName, response.status, detail || response.statusText);
   }
   return response.json() as Promise<T>;
 }
 
 export const api = {
+  async checkBackendReady(apiBaseUrl: string): Promise<void> {
+    const normalizedBaseUrl = apiBaseUrl.replace(/\/+$/, '');
+    try {
+      const response = await fetch(`${normalizedBaseUrl}/health/ready`);
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new ApiError('Backend health', response.status, detail || response.statusText);
+      }
+    } catch (error) {
+      throw buildNetworkError('Backend health', normalizedBaseUrl, error);
+    }
+  },
+
   async createOperatorSession(
     apiBaseUrl: string,
     username: string,
@@ -116,9 +150,7 @@ export const api = {
     });
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(
-        `Operator sign-out failed (${response.status}): ${detail || response.statusText}`,
-      );
+      throw new ApiError('Operator sign-out', response.status, detail || response.statusText);
     }
   },
 
@@ -168,9 +200,7 @@ export const api = {
     );
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(
-        `Push unsubscribe failed (${response.status}): ${detail || response.statusText}`,
-      );
+      throw new ApiError('Push unsubscribe', response.status, detail || response.statusText);
     }
   },
 
@@ -213,8 +243,10 @@ export const api = {
     );
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(
-        `Native push unsubscribe failed (${response.status}): ${detail || response.statusText}`,
+      throw new ApiError(
+        'Native push unsubscribe',
+        response.status,
+        detail || response.statusText,
       );
     }
   },
@@ -265,6 +297,13 @@ export const api = {
       headers: getAuthHeaders(),
     });
     return parseResponse<RepositoryOption[]>(response, 'Available repositories');
+  },
+
+  async getRepositoryPolicy(): Promise<RepositoryPolicy> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/repositories/policy`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<RepositoryPolicy>(response, 'Repository policy');
   },
 
   async getRunEvents(runId: string): Promise<RunEvent[]> {
@@ -340,6 +379,23 @@ export const api = {
       run_status: string;
       slice_status: string;
     }>(response, 'Execute next slice');
+  },
+
+  async deliverRun(runId: string, payload?: {
+    branch_name?: string;
+    commit_message?: string;
+    push?: boolean;
+    remote_name?: string;
+  }): Promise<RunDeliverySummary> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}/deliver`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload ?? {}),
+    });
+    return parseResponse<RunDeliverySummary>(response, 'Run delivery');
   },
 
   async respondToEscalation(

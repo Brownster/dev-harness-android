@@ -1,13 +1,18 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link as LinkIcon, Save } from 'lucide-react';
 
+import { StatusBadge } from './StatusBadge';
+import type { OperatorConnectionStatus } from '../types';
+
 interface ConnectionSettingsProps {
   initialApiBaseUrl: string;
+  connectionStatus: OperatorConnectionStatus;
   onSave: (apiBaseUrl: string) => void;
 }
 
 export function ConnectionSettings({
   initialApiBaseUrl,
+  connectionStatus,
   onSave,
 }: ConnectionSettingsProps) {
   const [apiBaseUrl, setApiBaseUrl] = useState(initialApiBaseUrl);
@@ -31,6 +36,22 @@ export function ConnectionSettings({
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-outline-variant/10 bg-surface-container-low px-4 py-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-on-surface">Connection Status</p>
+            <p className="text-sm text-on-surface-variant">{connectionStatus.backend_message}</p>
+          </div>
+          <StatusBadge
+            status={
+              connectionStatus.backend_state === 'reachable'
+                ? 'connected'
+                : connectionStatus.backend_state === 'unreachable'
+                  ? 'failed'
+                  : 'configuration required'
+            }
+          />
+        </div>
+
         <label className="block space-y-2">
           <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
             Backend URL

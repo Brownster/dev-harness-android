@@ -1,10 +1,52 @@
-import { AlertTriangle, CheckCircle2, FileText, MessageSquare, Play, Workflow } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUpFromLine,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  MessageSquare,
+  Play,
+  Workflow,
+} from 'lucide-react';
 
 import { cn } from '../../lib/cn';
 import { buildEscalationRoute } from '../../lib/routes';
 import { formatPausedOperation } from '../../lib/runFormatters';
 import { StatusBadge } from '../StatusBadge';
 import type { ArtifactSummary, Escalation, Slice } from '../../types';
+
+type ControlStateTone = 'blocked' | 'waiting' | 'ready' | 'complete' | 'progress';
+
+function controlToneClasses(tone: ControlStateTone) {
+  switch (tone) {
+    case 'blocked':
+      return 'border-tertiary/20 bg-tertiary/10';
+    case 'waiting':
+      return 'border-primary/20 bg-primary/10';
+    case 'ready':
+      return 'border-secondary/20 bg-secondary/10';
+    case 'complete':
+      return 'border-primary/20 bg-primary/10';
+    default:
+      return 'border-outline-variant/10 bg-surface-container-low';
+  }
+}
+
+function controlToneIcon(tone: ControlStateTone) {
+  switch (tone) {
+    case 'blocked':
+      return AlertTriangle;
+    case 'waiting':
+      return Clock3;
+    case 'ready':
+    case 'complete':
+      return CheckCircle2;
+    default:
+      return Workflow;
+  }
+}
 
 interface IterationDetailsLike {
   iterationNumber: number | null;
@@ -78,6 +120,62 @@ export function CurrentEscalationCard({
           <MessageSquare className="h-4 w-4" />
           Open Escalation
         </button>
+      </div>
+    </div>
+  );
+}
+
+export function RunControlStateCard({
+  title,
+  description,
+  detail,
+  tone,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  detail: string | null;
+  tone: string;
+  actionLabel: string | null;
+  onAction?: (() => void) | null;
+}) {
+  const normalizedTone = ([
+    'blocked',
+    'waiting',
+    'ready',
+    'complete',
+    'progress',
+  ] as const).includes(tone as ControlStateTone)
+    ? (tone as ControlStateTone)
+    : 'progress';
+  const Icon = controlToneIcon(normalizedTone);
+
+  return (
+    <div className={cn('rounded-xl border px-5 py-5', controlToneClasses(normalizedTone))}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-surface/70 p-2">
+              <Icon className="h-5 w-5 text-on-surface" />
+            </div>
+            <div>
+              <h2 className="font-headline text-xl font-bold text-on-surface">{title}</h2>
+              <p className="text-sm text-on-surface-variant">{description}</p>
+            </div>
+          </div>
+          {detail && <p className="text-sm text-on-surface">{detail}</p>}
+        </div>
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-outline-variant/10 bg-surface px-4 py-3 text-xs font-bold uppercase tracking-widest text-on-surface"
+          >
+            <MessageSquare className="h-4 w-4" />
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -378,26 +476,56 @@ export function RunActionControls({
   actionLoading,
   canPlan,
   canExecuteNext,
+  canDeliver,
   planActionLabel,
   executeActionLabel,
+  deliverActionLabel,
   planBlockedReason,
   executeBlockedReason,
+  deliverBlockedReason,
+  deliveryBranchName,
+  deliveryRemoteName,
+  deliveryPushRequested,
+  deliveryOverridesOpen,
+  onDeliveryBranchNameChange,
+  onDeliveryRemoteNameChange,
+  onDeliveryPushRequestedChange,
+  onToggleDeliveryOverrides,
   onPlan,
   onExecuteNext,
+  onDeliver,
 }: {
   actionLoading: boolean;
   canPlan: boolean;
   canExecuteNext: boolean;
+  canDeliver: boolean;
   planActionLabel: string;
   executeActionLabel: string;
+  deliverActionLabel: string;
   planBlockedReason: string | null;
   executeBlockedReason: string | null;
+  deliverBlockedReason: string | null;
+  deliveryBranchName: string;
+  deliveryRemoteName: string;
+  deliveryPushRequested: boolean;
+  deliveryOverridesOpen: boolean;
+  onDeliveryBranchNameChange: (value: string) => void;
+  onDeliveryRemoteNameChange: (value: string) => void;
+  onDeliveryPushRequestedChange: (value: boolean) => void;
+  onToggleDeliveryOverrides: () => void;
   onPlan: () => void;
   onExecuteNext: () => void;
+  onDeliver: () => void;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-2">
+    <div className="grid gap-3 sm:grid-cols-3">
+      <div className="space-y-3 rounded-xl border border-outline-variant/10 bg-surface-container-low px-4 py-4">
+        <div className="space-y-1">
+          <p className="font-headline text-base font-bold text-on-surface">{planActionLabel}</p>
+          <p className="text-xs text-on-surface-variant">
+            {planBlockedReason ?? 'Ready to generate or resume planning for this run.'}
+          </p>
+        </div>
         <button
           type="button"
           disabled={actionLoading || !canPlan}
@@ -407,16 +535,14 @@ export function RunActionControls({
           <Workflow className="w-4 h-4" />
           {planActionLabel}
         </button>
-        <p
-          className={cn(
-            'text-xs',
-            planBlockedReason ? 'text-on-surface-variant' : 'text-secondary',
-          )}
-        >
-          {planBlockedReason ?? 'Ready to generate or resume planning for this run.'}
-        </p>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-3 rounded-xl border border-outline-variant/10 bg-surface-container-low px-4 py-4">
+        <div className="space-y-1">
+          <p className="font-headline text-base font-bold text-on-surface">{executeActionLabel}</p>
+          <p className="text-xs text-on-surface-variant">
+            {executeBlockedReason ?? 'Ready to execute the next available slice.'}
+          </p>
+        </div>
         <button
           type="button"
           disabled={actionLoading || !canExecuteNext}
@@ -426,14 +552,63 @@ export function RunActionControls({
           <Play className="w-4 h-4" />
           {executeActionLabel}
         </button>
-        <p
-          className={cn(
-            'text-xs',
-            executeBlockedReason ? 'text-on-surface-variant' : 'text-secondary',
-          )}
+      </div>
+      <div className="space-y-3 rounded-xl border border-outline-variant/10 bg-surface-container-low px-4 py-4">
+        <div className="space-y-1">
+          <p className="font-headline text-base font-bold text-on-surface">{deliverActionLabel}</p>
+          <p className="text-xs text-on-surface-variant">
+            {deliverBlockedReason ?? 'Create or retry the delivery branch for this completed run.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleDeliveryOverrides}
+          className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant"
         >
-          {executeBlockedReason ?? 'Ready to execute the next available slice.'}
-        </p>
+          {deliveryOverridesOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          Delivery Options
+        </button>
+        {deliveryOverridesOpen && (
+          <div className="space-y-3 rounded-lg border border-outline-variant/10 bg-surface px-3 py-3">
+            <input
+              type="text"
+              value={deliveryBranchName}
+              onChange={(event) => onDeliveryBranchNameChange(event.target.value)}
+              placeholder="Branch name override"
+              className="w-full rounded-lg border border-outline-variant/10 bg-surface-container-low px-3 py-2 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary/30"
+            />
+            <input
+              type="text"
+              value={deliveryRemoteName}
+              onChange={(event) => onDeliveryRemoteNameChange(event.target.value)}
+              placeholder="Remote name override"
+              className="w-full rounded-lg border border-outline-variant/10 bg-surface-container-low px-3 py-2 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary/30"
+            />
+            <label className="flex items-start gap-3 rounded-lg border border-outline-variant/10 bg-surface-container-low px-3 py-3">
+              <input
+                type="checkbox"
+                checked={deliveryPushRequested}
+                onChange={(event) => onDeliveryPushRequestedChange(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-outline-variant/20"
+              />
+              <span className="space-y-1">
+                <span className="block text-sm text-on-surface">Push after delivery</span>
+                <span className="block text-xs text-on-surface-variant">
+                  If unchecked, the app will only create or update the local delivery branch.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
+        <button
+          type="button"
+          disabled={actionLoading || !canDeliver}
+          onClick={onDeliver}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-outline-variant/10 bg-surface px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-surface disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <ArrowUpFromLine className="w-4 h-4" />
+          {deliverActionLabel}
+        </button>
       </div>
     </div>
   );

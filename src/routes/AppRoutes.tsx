@@ -1,7 +1,14 @@
 import { Suspense, lazy } from 'react';
 import { Route, Routes, type Location } from 'react-router-dom';
 
-import type { RepositoryOption, Run, RunCreateInput } from '../types';
+import type {
+  OperatorConnectionStatus,
+  RepositoryPolicy,
+  RepositoryOption,
+  Run,
+  RunCreateInput,
+  RunDeliverySummary,
+} from '../types';
 import type { HarnessRuntimeConfig } from '../services/runtimeConfig';
 import type { PushNotificationStatus } from '../services/pushNotifications';
 
@@ -34,11 +41,13 @@ interface AppRoutesProps {
   authenticated: boolean;
   dashboard: {
     repositories: RepositoryOption[];
+    repositoryPolicy: RepositoryPolicy | null;
     repositoriesLoading: boolean;
     repositoriesError: string | null;
     runs: Run[];
     runsLoading: boolean;
     runsError: string | null;
+    runDeliverySummaries: Record<string, RunDeliverySummary | null>;
     onOpenRun: (runId: string) => void;
     onRefresh: () => Promise<void>;
     onCreateRun: (payload: RunCreateInput) => Promise<void>;
@@ -50,10 +59,16 @@ interface AppRoutesProps {
   };
   settings: {
     config: HarnessRuntimeConfig;
+    connectionStatus: OperatorConnectionStatus;
+    pinConfigured: boolean;
     pushStatus: PushNotificationStatus;
     onSaveApiBaseUrl: (apiBaseUrl: string) => void;
     onLogin: (username: string, password: string) => Promise<void>;
     onLogout: () => Promise<void>;
+    onSetPin: (pin: string) => Promise<void>;
+    onChangePin: (currentPin: string, nextPin: string) => Promise<void>;
+    onRemovePin: (currentPin: string) => Promise<void>;
+    onLockNow: () => void;
     onEnablePush: () => Promise<void>;
     onDisablePush: () => Promise<void>;
     onSendTestPush: () => Promise<void>;
@@ -76,11 +91,13 @@ export function AppRoutes({
             <DashboardView
               authenticated={authenticated}
               repositories={dashboard.repositories}
+              repositoryPolicy={dashboard.repositoryPolicy}
               repositoriesLoading={dashboard.repositoriesLoading}
               repositoriesError={dashboard.repositoriesError}
               runs={dashboard.runs}
               runsLoading={dashboard.runsLoading}
               runsError={dashboard.runsError}
+              runDeliverySummaries={dashboard.runDeliverySummaries}
               onOpenRun={dashboard.onOpenRun}
               onRefresh={dashboard.onRefresh}
               onCreateRun={dashboard.onCreateRun}
@@ -118,11 +135,17 @@ export function AppRoutes({
           element={
             <SettingsView
               config={settings.config}
+              connectionStatus={settings.connectionStatus}
               authenticated={authenticated}
+              pinConfigured={settings.pinConfigured}
               pushStatus={settings.pushStatus}
               onSaveApiBaseUrl={settings.onSaveApiBaseUrl}
               onLogin={settings.onLogin}
               onLogout={settings.onLogout}
+              onSetPin={settings.onSetPin}
+              onChangePin={settings.onChangePin}
+              onRemovePin={settings.onRemovePin}
+              onLockNow={settings.onLockNow}
               onEnablePush={settings.onEnablePush}
               onDisablePush={settings.onDisablePush}
               onSendTestPush={settings.onSendTestPush}

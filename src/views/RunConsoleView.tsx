@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Settings } from 'lucide-react';
 
@@ -11,6 +11,7 @@ import {
 } from '../components/run-console/RunConsoleEvidence';
 import {
   CurrentEscalationCard,
+  RunControlStateCard,
   RunActionControls,
   RunEscalationsList,
   SliceCard,
@@ -27,6 +28,10 @@ export function RunConsoleView({ authenticated }: { authenticated: boolean }) {
   const navigate = useNavigate();
   const consoleState = useRunConsole(authenticated);
   const run = consoleState.run;
+  const [deliveryBranchName, setDeliveryBranchName] = useState('');
+  const [deliveryRemoteName, setDeliveryRemoteName] = useState('origin');
+  const [deliveryPushRequested, setDeliveryPushRequested] = useState(false);
+  const [deliveryOverridesOpen, setDeliveryOverridesOpen] = useState(false);
   const currentSliceModel = {
     slice: consoleState.currentSlice,
     iteration: consoleState.currentIteration,
@@ -39,10 +44,13 @@ export function RunConsoleView({ authenticated }: { authenticated: boolean }) {
     lastRefreshedAt: consoleState.lastRefreshedAt,
     canPlan: consoleState.canPlan,
     canExecuteNext: consoleState.canExecuteNext,
+    canDeliver: consoleState.canDeliver,
     planActionLabel: consoleState.planActionLabel,
     executeActionLabel: consoleState.executeActionLabel,
+    deliverActionLabel: consoleState.deliverActionLabel,
     planBlockedReason: consoleState.planBlockedReason,
     executeBlockedReason: consoleState.executeBlockedReason,
+    deliverBlockedReason: consoleState.deliverBlockedReason,
   };
   const artifactModel = {
     selectedArtifactId: consoleState.selectedArtifactId,
@@ -72,7 +80,18 @@ export function RunConsoleView({ authenticated }: { authenticated: boolean }) {
     activeIterationLabel: consoleState.activeIterationLabel,
     activeIterationDetail: consoleState.activeIterationDetail,
     pauseWindowOpened: consoleState.pauseWindowOpened,
+    resumeCountdownLabel: consoleState.resumeCountdownLabel,
+    controlState: consoleState.controlState,
   };
+
+  useEffect(() => {
+    if (!run) {
+      return;
+    }
+    setDeliveryBranchName(run.target_branch ?? '');
+    setDeliveryRemoteName(run.delivery_remote_name ?? 'origin');
+    setDeliveryPushRequested(run.push_on_complete ?? false);
+  }, [run?.delivery_remote_name, run?.push_on_complete, run?.run_id, run?.target_branch]);
 
   const openEscalationFromRun = useCallback(
     (target: string) => {
@@ -131,6 +150,20 @@ export function RunConsoleView({ authenticated }: { authenticated: boolean }) {
         runId={run.run_id}
         onOpenEscalation={openEscalationFromRun}
       />
+      {runMeta.controlState && (
+        <RunControlStateCard
+          title={runMeta.controlState.title}
+          description={runMeta.controlState.description}
+          detail={runMeta.controlState.detail}
+          tone={runMeta.controlState.tone}
+          actionLabel={runMeta.controlState.actionLabel}
+          onAction={
+            runMeta.controlState.actionTarget
+              ? () => openEscalationFromRun(runMeta.controlState.actionTarget)
+              : null
+          }
+        />
+      )}
       {run.status === 'RUN_PAUSED' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-tertiary/20 bg-tertiary/10 p-5">
@@ -149,6 +182,9 @@ export function RunConsoleView({ authenticated }: { authenticated: boolean }) {
                 <div className="flex flex-wrap gap-2 text-xs text-on-surface-variant">
                   {run.resume_after && (
                     <span>Resume after {new Date(run.resume_after).toLocaleString()}</span>
+                  )}
+                  {runMeta.resumeCountdownLabel && (
+                    <span>Resume in {runMeta.resumeCountdownLabel}</span>
                   )}
                   {run.paused_slice_id && <span>Slice {run.paused_slice_id}</span>}
                   {typeof run.paused_attempt_number === 'number' && (
@@ -195,12 +231,32 @@ export function RunConsoleView({ authenticated }: { authenticated: boolean }) {
           actionLoading={actionModel.loading}
           canPlan={actionModel.canPlan}
           canExecuteNext={actionModel.canExecuteNext}
+          canDeliver={actionModel.canDeliver}
           planActionLabel={actionModel.planActionLabel}
           executeActionLabel={actionModel.executeActionLabel}
+          deliverActionLabel={actionModel.deliverActionLabel}
           planBlockedReason={actionModel.planBlockedReason}
           executeBlockedReason={actionModel.executeBlockedReason}
+          deliverBlockedReason={actionModel.deliverBlockedReason}
+          deliveryBranchName={deliveryBranchName}
+          deliveryRemoteName={deliveryRemoteName}
+          deliveryPushRequested={deliveryPushRequested}
+          deliveryOverridesOpen={deliveryOverridesOpen}
+          onDeliveryBranchNameChange={setDeliveryBranchName}
+          onDeliveryRemoteNameChange={setDeliveryRemoteName}
+          onDeliveryPushRequestedChange={setDeliveryPushRequested}
+          onToggleDeliveryOverrides={() =>
+            setDeliveryOverridesOpen((current) => !current)
+          }
           onPlan={() => void consoleState.runAction('plan')}
           onExecuteNext={() => void consoleState.runAction('execute_next')}
+          onDeliver={() =>
+            void consoleState.runAction('deliver', {
+              branch_name: deliveryBranchName.trim() || undefined,
+              remote_name: deliveryRemoteName.trim() || undefined,
+              push: deliveryPushRequested,
+            })
+          }
         />
       </div>
 

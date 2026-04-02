@@ -37,6 +37,21 @@ const PAUSED_PLANNING_STATUSES = new Set([
   'SLICING',
 ]);
 
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
 function hasPauseWindowOpened(run: Run | null) {
   if (!run?.resume_after) {
     return true;
@@ -69,6 +84,7 @@ export function useRunConsole(authenticated: boolean) {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const currentEscalation =
     escalations.find((escalation) => escalation.status.toUpperCase() === 'OPEN') ??
@@ -131,13 +147,25 @@ export function useRunConsole(authenticated: boolean) {
   const autoRefreshEnabled = run ? ACTIVE_RUN_STATUSES.has(run.status) : false;
   const keyArtifactIds = run ? collectKeyArtifactIds(run.artifacts ?? []) : [];
   const pauseWindowOpened = hasPauseWindowOpened(run);
+  const resumeCountdownLabel =
+    run?.resume_after && !pauseWindowOpened
+      ? formatCountdown(new Date(run.resume_after).getTime() - nowMs)
+      : null;
   const pausedForPlanning =
     run?.status === 'RUN_PAUSED' && PAUSED_PLANNING_STATUSES.has(run.paused_from_status ?? '');
   const pausedForExecution = run?.status === 'RUN_PAUSED' && run.paused_from_status === 'SLICE_RUNNING';
   const canPlan = run?.status === 'PLANNING' || (pausedForPlanning && pauseWindowOpened);
   const canExecuteNext = run?.status === 'READY_FOR_SLICE' || (pausedForExecution && pauseWindowOpened);
+  const canDeliver = run?.status === 'RUN_COMPLETE' && !report?.delivery?.pushed;
   const planActionLabel = pausedForPlanning ? 'Resume Planning' : 'Generate Plan';
   const executeActionLabel = pausedForExecution ? 'Resume Slice' : 'Execute Next Slice';
+  const deliverActionLabel = report?.delivery
+    ? report.delivery.push_error
+      ? 'Retry Delivery Push'
+      : report.delivery.pushed
+        ? 'Delivery Complete'
+        : 'Push Delivery Branch'
+    : 'Deliver Branch';
   const planBlockedReason = (() => {
     if (actionLoading) {
       return 'Another run action is already in progress.';
@@ -187,6 +215,104 @@ export function useRunConsole(authenticated: boolean) {
       return 'Generate or resume the plan before executing slices.';
     }
     return `Run must be READY_FOR_SLICE to execute work. Current status: ${run?.status}.`;
+  })();
+  const deliverBlockedReason = (() => {
+    if (actionLoading) {
+      return 'Another run action is already in progress.';
+    }
+    if (canDeliver) {
+      return null;
+    }
+    if (run?.status !== 'RUN_COMPLETE') {
+      return `Run must be complete before delivery. Current status: ${run?.status}.`;
+    }
+    if (report?.delivery?.pushed) {
+      return 'Delivery has already been pushed for this run.';
+    }
+    return 'Delivery is not available yet.';
+  })();
+  const controlState = (() => {
+    if (!run) {
+      return null;
+    }
+    if (hasOpenEscalation && currentEscalation) {
+      return {
+        tone: 'blocked',
+        title: 'Operator Decision Required',
+        description: `Escalation ${currentEscalation.escalation_id} must be resolved before the run can continue.`,
+        detail: currentEscalation.question,
+        actionLabel: 'Open Escalation',
+        actionTarget: currentEscalation.escalation_id,
+      };
+    }
+    if (run.status === 'RUN_PAUSED' && !pauseWindowOpened && run.resume_after) {
+      return {
+        tone: 'waiting',
+        title: 'Waiting for Resume Window',
+        description: `${run.paused_agent ?? 'Agent'} is rate limited during ${formatPausedOperation(run.paused_operation)}.`,
+        detail: `Resume available in ${resumeCountdownLabel ?? 'a moment'} at ${new Date(run.resume_after).toLocaleString()}.`,
+        actionLabel: null,
+        actionTarget: null,
+      };
+    }
+    if (pausedForPlanning && pauseWindowOpened) {
+      return {
+        tone: 'ready',
+        title: 'Planning Can Resume',
+        description: 'The provider window has reopened and planning can continue.',
+        detail: planActionLabel,
+        actionLabel: null,
+        actionTarget: null,
+      };
+    }
+    if (pausedForExecution && pauseWindowOpened) {
+      return {
+        tone: 'ready',
+        title: 'Slice Execution Can Resume',
+        description: 'The provider window has reopened and the paused slice can continue.',
+        detail: executeActionLabel,
+        actionLabel: null,
+        actionTarget: null,
+      };
+    }
+    if (run.status === 'PLANNING') {
+      return {
+        tone: 'ready',
+        title: 'Ready for Planning',
+        description: 'This run is waiting for plan generation.',
+        detail: 'Generate the plan to move into slice preparation.',
+        actionLabel: null,
+        actionTarget: null,
+      };
+    }
+    if (run.status === 'READY_FOR_SLICE') {
+      return {
+        tone: 'ready',
+        title: 'Ready for Next Slice',
+        description: 'Planning is complete and the next slice can be executed.',
+        detail: currentSlice ? `Next slice: ${currentSlice.title}` : 'No slice is currently pinned.',
+        actionLabel: null,
+        actionTarget: null,
+      };
+    }
+    if (run.status === 'RUN_COMPLETE') {
+      return {
+        tone: 'complete',
+        title: 'Run Complete',
+        description: 'All governed work for this run is finished.',
+        detail: null,
+        actionLabel: null,
+        actionTarget: null,
+      };
+    }
+    return {
+      tone: 'progress',
+      title: 'Run In Progress',
+      description: `Current status: ${run.status}.`,
+      detail: currentSlice ? `Current slice: ${currentSlice.title}` : null,
+      actionLabel: null,
+      actionTarget: null,
+    };
   })();
 
   const loadRunConsole = useCallback(
@@ -272,6 +398,20 @@ export function useRunConsole(authenticated: boolean) {
       window.clearInterval(intervalId);
     };
   }, [autoRefreshEnabled, loadRunConsole]);
+
+  useEffect(() => {
+    if (!run?.resume_after || pauseWindowOpened) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [pauseWindowOpened, run?.resume_after]);
 
   useEffect(() => {
     if (!run || selectedArtifactId !== null) {
@@ -431,7 +571,14 @@ export function useRunConsole(authenticated: boolean) {
   }, [id, iterationHistoryArtifactSummary, selectedArtifact]);
 
   const runAction = useCallback(
-    async (action: 'plan' | 'execute_next') => {
+    async (
+      action: 'plan' | 'execute_next' | 'deliver',
+      deliveryOptions?: {
+        branch_name?: string;
+        remote_name?: string;
+        push?: boolean;
+      },
+    ) => {
       if (!id) {
         return;
       }
@@ -440,6 +587,12 @@ export function useRunConsole(authenticated: boolean) {
       try {
         if (action === 'plan') {
           await api.planRun(id);
+        } else if (action === 'deliver') {
+          await api.deliverRun(id, {
+            branch_name: deliveryOptions?.branch_name,
+            push: deliveryOptions?.push ?? run?.push_on_complete ?? false,
+            remote_name: deliveryOptions?.remote_name ?? run?.delivery_remote_name ?? 'origin',
+          });
         } else {
           await api.executeNextSlice(id);
         }
@@ -450,7 +603,7 @@ export function useRunConsole(authenticated: boolean) {
         setActionLoading(false);
       }
     },
-    [id, loadRunConsole],
+    [id, loadRunConsole, run?.delivery_remote_name, run?.push_on_complete],
   );
 
   return {
@@ -491,14 +644,19 @@ export function useRunConsole(authenticated: boolean) {
     activeIterationDetail,
     autoRefreshEnabled,
     pauseWindowOpened,
+    resumeCountdownLabel,
     pausedForPlanning,
     pausedForExecution,
+    controlState,
     canPlan,
     canExecuteNext,
+    canDeliver,
     planActionLabel,
     executeActionLabel,
+    deliverActionLabel,
     planBlockedReason,
     executeBlockedReason,
+    deliverBlockedReason,
     runAction,
   };
 }
