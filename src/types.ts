@@ -81,7 +81,19 @@ export interface RunEvent {
   status: string | null;
   summary: string;
   details: Record<string, unknown>;
+  envelope: RunEventEnvelope;
   created_at: string;
+}
+
+export interface RunEventEnvelope {
+  schema_version: '1';
+  event: string;
+  timestamp: string;
+  source: string;
+  run_id: string;
+  slice_id: string | null;
+  agent: string | null;
+  context: Record<string, unknown>;
 }
 
 export interface RunCreateInput {
@@ -91,6 +103,14 @@ export interface RunCreateInput {
   spec_attachment_name?: string;
   spec_attachment_content?: string;
   policy_pack: string;
+}
+
+export interface RepositoryOption {
+  repo_name: string;
+  repo_path: string;
+  root_path: string;
+  relative_path: string;
+  current_branch?: string | null;
 }
 
 export interface PlanningResponse {
@@ -162,6 +182,8 @@ export interface OperatorCurrentSessionResponse {
 
 export interface PushConfigResponse {
   enabled: boolean;
+  web_enabled: boolean;
+  native_android_enabled: boolean;
   vapid_public_key: string | null;
 }
 
@@ -178,5 +200,37 @@ export interface PushSubscriptionResponse {
   delivery_failures: number;
   cooldown_until: string | null;
   last_notified_escalation_id: string | null;
+  last_error: string | null;
+}
+
+export interface NativePushDeviceResponse {
+  device_id: string;
+  installation_id: string;
+  platform: string;
+  device_label: string | null;
+  app_version: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  last_notified_at: string | null;
+  last_delivery_attempt_at: string | null;
+  last_delivery_status: string | null;
+  last_delivery_status_code: number | null;
+  delivery_failures: number;
+  cooldown_until: string | null;
+  last_notified_escalation_id: string | null;
+  last_error: string | null;
+}
+
+export interface NativePushTestResponse {
+  device_id: string;
+  installation_id: string;
+  delivered: boolean;
+  status_code: number | null;
+  body: string;
+  disabled: boolean;
+  last_delivery_status: string | null;
+  last_delivery_attempt_at: string | null;
+  cooldown_until: string | null;
   last_error: string | null;
 }

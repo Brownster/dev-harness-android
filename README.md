@@ -11,7 +11,7 @@ This app allows a human operator to monitor and govern the AI agents running on 
 *   **Artifact Inspection**: Dive into the generated plans, review the Codex/Claude execution logs, and read policy verdicts.
 *   **Human-in-the-Loop Escalations**: When the AI gets stuck, it pauses and requests help. Use this app to read the agent's question, view the context (including evaluator critiques), and submit a binding decision to resume or block the run.
 *   **Operator Authentication**: Securely sign in to the backend using username and password to establish a revocable session.
-*   **Web Push Alerts**: Receive native push notifications when an escalation requires your attention, deep-linking you straight to the decision screen.
+*   **Native Push Alerts**: Receive Firebase-backed Android push notifications when an escalation requires your attention, deep-linking you straight to the decision screen.
 
 ---
 
@@ -30,7 +30,7 @@ You do not need to install Android Studio to build this app. A GitHub Action is 
 If you want to modify the UI or run the app locally in a browser:
 
 ### Prerequisites
-*   Node.js (v20+)
+*   Node.js (v22+)
 *   npm or yarn
 *   A running instance of the `dev-harness` backend API.
 
@@ -54,6 +54,20 @@ You may configure the following variable in your `.env.local`:
 npm run dev
 ```
 The application will be available at `http://localhost:3000`.
+
+### Native Android Push Setup
+
+To receive push notifications in the installed Android app:
+
+1. Configure the backend with `HARNESS_FCM_SERVICE_ACCOUNT_JSON_PATH` pointing to a Firebase service-account JSON file.
+2. Add your Firebase client file to `android/app/google-services.json`.
+3. Rebuild or sync the Android shell:
+
+```bash
+npx cap sync android
+```
+
+The Android build already applies the Google services plugin automatically when `google-services.json` is present, so no manual Gradle edits are required.
 
 ---
 

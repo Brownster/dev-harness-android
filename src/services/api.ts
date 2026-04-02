@@ -4,9 +4,12 @@ import {
   EscalationResponseInput,
   OperatorCurrentSessionResponse,
   OperatorSessionResponse,
+  NativePushDeviceResponse,
+  NativePushTestResponse,
   PlanningResponse,
   PushConfigResponse,
   PushSubscriptionResponse,
+  RepositoryOption,
   Run,
   RunCreateInput,
   RunEvent,
@@ -131,6 +134,66 @@ export const api = {
     }
   },
 
+  async registerNativePushDevice(payload: {
+    installation_id: string;
+    registration_token: string;
+    platform: string;
+    device_label?: string;
+    app_version?: string;
+  }): Promise<NativePushDeviceResponse> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/push/native/devices`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    return parseResponse<NativePushDeviceResponse>(response, 'Native push device');
+  },
+
+  async listNativePushDevices(): Promise<NativePushDeviceResponse[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/operator/push/native/devices`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<NativePushDeviceResponse[]>(response, 'Native push devices');
+  },
+
+  async unregisterNativePushDevice(installationId: string): Promise<void> {
+    const response = await fetch(
+      `${getConfiguredBaseUrl()}/api/v1/operator/push/native/devices/remove`,
+      {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ installation_id: installationId }),
+      },
+    );
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(
+        `Native push unsubscribe failed (${response.status}): ${detail || response.statusText}`,
+      );
+    }
+  },
+
+  async sendNativePushTest(installationId: string): Promise<NativePushTestResponse> {
+    const response = await fetch(
+      `${getConfiguredBaseUrl()}/api/v1/operator/push/native/devices/test`,
+      {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ installation_id: installationId }),
+      },
+    );
+    return parseResponse<NativePushTestResponse>(response, 'Native push test');
+  },
+
   async getRun(runId: string): Promise<Run> {
     const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/${runId}`, {
       headers: getAuthHeaders(),
@@ -155,6 +218,13 @@ export const api = {
       body: JSON.stringify(payload),
     });
     return parseResponse<Run>(response, 'Create run');
+  },
+
+  async listAvailableRepositories(): Promise<RepositoryOption[]> {
+    const response = await fetch(`${getConfiguredBaseUrl()}/api/v1/runs/repositories`, {
+      headers: getAuthHeaders(),
+    });
+    return parseResponse<RepositoryOption[]>(response, 'Available repositories');
   },
 
   async getRunEvents(runId: string): Promise<RunEvent[]> {

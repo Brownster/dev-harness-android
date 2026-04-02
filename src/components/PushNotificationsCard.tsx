@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Bell, BellOff, Smartphone } from 'lucide-react';
 
 import { type PushNotificationStatus } from '../services/pushNotifications';
@@ -7,6 +8,7 @@ interface PushNotificationsCardProps {
   status: PushNotificationStatus;
   onEnable: () => Promise<void>;
   onDisable: () => Promise<void>;
+  onSendTestPush: () => Promise<void>;
 }
 
 export function PushNotificationsCard({
@@ -14,7 +16,10 @@ export function PushNotificationsCard({
   status,
   onEnable,
   onDisable,
+  onSendTestPush,
 }: PushNotificationsCardProps) {
+  const [testFeedback, setTestFeedback] = useState<string | null>(null);
+  const isNativeAndroid = status.channel === 'native-android';
   const canReRegister = status.lastDeliveryStatus === 'disabled';
   const enableLabel = canReRegister ? 'Re-register Notifications' : 'Enable Notifications';
   const statusLabel =
@@ -28,24 +33,31 @@ export function PushNotificationsCard({
             ? 'Enabled on this device'
             : 'Not enabled';
   const statusText = !status.supported
-    ? 'This browser does not support Web Push.'
+    ? `This ${isNativeAndroid ? 'Android shell' : 'browser'} does not support push notifications.`
     : !authenticated
       ? 'Sign in first, then enable notifications on this device.'
       : !status.serverEnabled
-        ? 'The backend is not configured for push delivery yet.'
+        ? `The backend is not configured for ${isNativeAndroid ? 'native Android' : 'browser'} push delivery yet.`
         : status.subscribed
           ? 'Push delivery is enabled for this device.'
           : status.permission === 'denied'
-            ? 'Browser notifications are blocked for this app.'
+            ? 'Notifications are blocked for this app.'
             : 'Push delivery is available but not enabled on this device.';
+  const canSendTestPush =
+    isNativeAndroid &&
+    authenticated &&
+    status.supported &&
+    status.serverEnabled &&
+    status.subscribed &&
+    !status.loading;
 
   return (
     <div className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden">
       <div className="bg-surface-container-high px-6 py-4 border-b border-outline-variant/5">
         <h2 className="font-headline text-lg font-bold">Push Notifications</h2>
         <p className="text-sm text-on-surface-variant mt-1">
-          Receive escalation alerts directly on this device and jump into the matching review
-          screen.
+          Receive escalation alerts through {status.channelLabel.toLowerCase()} and jump into the
+          matching review screen.
         </p>
       </div>
 
@@ -109,6 +121,12 @@ export function PushNotificationsCard({
           </div>
         )}
 
+        {testFeedback && (
+          <div className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+            {testFeedback}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             type="button"
@@ -135,6 +153,30 @@ export function PushNotificationsCard({
             <BellOff className="w-4 h-4" />
             Disable Notifications
           </button>
+
+          {isNativeAndroid && (
+            <button
+              type="button"
+              onClick={() => {
+                setTestFeedback(null);
+                void (async () => {
+                  try {
+                    await onSendTestPush();
+                    setTestFeedback('Test notification sent. Check this device notification tray.');
+                  } catch (error) {
+                    setTestFeedback(
+                      error instanceof Error ? error.message : 'Failed to send test notification.',
+                    );
+                  }
+                })();
+              }}
+              disabled={!canSendTestPush}
+              className="flex items-center justify-center gap-2 rounded-lg border border-outline-variant/10 bg-surface px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-surface disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Smartphone className="w-4 h-4" />
+              Send Test Notification
+            </button>
+          )}
         </div>
       </div>
     </div>
