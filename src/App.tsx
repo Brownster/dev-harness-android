@@ -56,8 +56,6 @@ function MainLayout() {
   };
 
   const dashboardRoute = {
-    config: runtimeConfig,
-    pushStatus,
     repositories,
     repositoriesLoading,
     repositoriesError,
@@ -98,6 +96,9 @@ function MainLayout() {
       <AppHeader
         authenticated={authenticated}
         username={runtimeConfig.username}
+        apiBaseUrl={runtimeConfig.apiBaseUrl}
+        registeredDevices={pushStatus.registeredDevices}
+        runCount={runs.length}
         isMobilePreview={isMobilePreview}
         showDeepLinkSim={showDeepLinkSim}
         onHome={handleHome}

@@ -3,18 +3,13 @@ import { useState } from 'react';
 import {
   RunCreationPanel,
   RunsPanel,
-  SessionContextPanel,
 } from '../components/dashboard/DashboardPanels';
 import { PullToRefresh } from '../components/NativeInteractions';
 import { cn } from '../lib/cn';
-import type { PushNotificationStatus } from '../services/pushNotifications';
-import type { HarnessRuntimeConfig } from '../services/runtimeConfig';
 import type { RepositoryOption, Run, RunCreateInput } from '../types';
 
 export interface DashboardViewProps {
-  config: HarnessRuntimeConfig;
   authenticated: boolean;
-  pushStatus: PushNotificationStatus;
   repositories: RepositoryOption[];
   repositoriesLoading: boolean;
   repositoriesError: string | null;
@@ -27,9 +22,7 @@ export interface DashboardViewProps {
 }
 
 export function DashboardView({
-  config,
   authenticated,
-  pushStatus,
   repositories,
   repositoriesLoading,
   repositoriesError,
@@ -45,14 +38,6 @@ export function DashboardView({
   return (
     <div className="space-y-6 sm:space-y-8">
       <PullToRefresh onRefresh={onRefresh} />
-
-      <SessionContextPanel
-        config={config}
-        authenticated={authenticated}
-        pushStatus={pushStatus}
-        runs={runs}
-        runsLoading={runsLoading}
-      />
 
       <div className="flex gap-2 border-b border-outline-variant/10 pb-px overflow-x-auto custom-scrollbar">
         <button

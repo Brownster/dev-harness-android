@@ -33,8 +33,6 @@ interface AppRoutesProps {
   location: Location;
   authenticated: boolean;
   dashboard: {
-    config: HarnessRuntimeConfig;
-    pushStatus: PushNotificationStatus;
     repositories: RepositoryOption[];
     repositoriesLoading: boolean;
     repositoriesError: string | null;
@@ -76,9 +74,7 @@ export function AppRoutes({
           path="/"
           element={
             <DashboardView
-              config={dashboard.config}
               authenticated={authenticated}
-              pushStatus={dashboard.pushStatus}
               repositories={dashboard.repositories}
               repositoriesLoading={dashboard.repositoriesLoading}
               repositoriesError={dashboard.repositoriesError}
