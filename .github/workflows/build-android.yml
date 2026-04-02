@@ -73,6 +73,33 @@ jobs:
           fi
           printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
+      - name: Validate Firebase Android Client Config
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("android/app/google-services.json")
+          try:
+              data = json.loads(path.read_text())
+          except json.JSONDecodeError as exc:
+              raise SystemExit(
+                  f"::error::ANDROID_GOOGLE_SERVICES_JSON is not valid JSON: {exc}"
+              ) from exc
+
+          if "project_info" not in data:
+              raise SystemExit(
+                  "::error::ANDROID_GOOGLE_SERVICES_JSON is not an Android google-services.json file. "
+                  "It is likely a Firebase service-account JSON. Download google-services.json from the Firebase Android app settings and store that in the secret instead."
+              )
+
+          clients = data.get("client")
+          if not isinstance(clients, list) or not clients:
+              raise SystemExit(
+                  "::error::google-services.json is missing client entries for the Android app."
+              )
+          PY
+
       - name: Sync Capacitor
         run: npx cap sync android
 
