@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 import {
   ArtifactContent,
   Escalation,
@@ -17,6 +19,39 @@ import {
   Slice,
 } from '../types';
 import { loadRuntimeConfig } from './runtimeConfig';
+
+function isNativeAndroidRuntime(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+function isIpLikeHostname(hostname: string): boolean {
+  return (
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) ||
+    hostname.includes(':')
+  );
+}
+
+function buildNetworkError(resourceName: string, baseUrl: string, error: unknown): Error {
+  if (!(error instanceof TypeError)) {
+    return error instanceof Error ? error : new Error(`${resourceName} request failed.`);
+  }
+
+  let hostname = '';
+  try {
+    hostname = new URL(baseUrl).hostname;
+  } catch {
+    hostname = '';
+  }
+
+  const nativeHostnameHint =
+    isNativeAndroidRuntime() && hostname && !isIpLikeHostname(hostname)
+      ? ` Native Android may not resolve the hostname "${hostname}" reliably. Try the same backend URL with a direct IP address instead.`
+      : '';
+
+  return new Error(
+    `${resourceName} request failed: could not reach ${baseUrl}.${nativeHostnameHint}`,
+  );
+}
 
 function getConfiguredBaseUrl(): string {
   const { apiBaseUrl } = loadRuntimeConfig();
@@ -52,14 +87,19 @@ export const api = {
     username: string,
     password: string,
   ): Promise<OperatorSessionResponse> {
-    const response = await fetch(`${apiBaseUrl.replace(/\/+$/, '')}/api/v1/operator/session`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
-    return parseResponse<OperatorSessionResponse>(response, 'Operator session');
+    const normalizedBaseUrl = apiBaseUrl.replace(/\/+$/, '');
+    try {
+      const response = await fetch(`${normalizedBaseUrl}/api/v1/operator/session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+      return parseResponse<OperatorSessionResponse>(response, 'Operator session');
+    } catch (error) {
+      throw buildNetworkError('Operator session', normalizedBaseUrl, error);
+    }
   },
 
   async getCurrentOperatorSession(): Promise<OperatorCurrentSessionResponse> {
