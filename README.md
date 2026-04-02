@@ -20,8 +20,9 @@ This app allows a human operator to monitor and govern the AI agents running on 
 You do not need to install Android Studio to build this app. A GitHub Action is configured to build the APK for you:
 1. Go to the **Actions** tab in your GitHub repository.
 2. Select **Build Android APK** from the left sidebar.
-3. Click **Run workflow**. 
-4. Once completed, the APK will be available to download from the newly created GitHub Release.
+3. Add the repository secret `ANDROID_GOOGLE_SERVICES_JSON` with the full contents of your Firebase `google-services.json`.
+4. Click **Run workflow**. 
+5. Once completed, the APK will be available to download from the newly created GitHub Release.
 
 ---
 

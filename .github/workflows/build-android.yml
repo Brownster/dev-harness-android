@@ -62,6 +62,17 @@ jobs:
       - name: Build Web App
         run: npm run build
 
+      - name: Configure Firebase Android Client
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::Missing repository secret ANDROID_GOOGLE_SERVICES_JSON."
+            echo "::error::Set it to the full contents of android/app/google-services.json before building the APK."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON" > android/app/google-services.json
+
       - name: Sync Capacitor
         run: npx cap sync android
 
