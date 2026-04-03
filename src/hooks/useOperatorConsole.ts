@@ -296,14 +296,27 @@ export function useOperatorConsole() {
 
   const handleSaveApiBaseUrl = useCallback((apiBaseUrl: string) => {
     const nextConfig = saveRuntimeConfig({
-      ...loadRuntimeConfig(),
       apiBaseUrl,
+      sessionToken: '',
+      username: '',
     });
     setRuntimeConfig(nextConfig);
+    setRepositories([]);
+    setRepositoryPolicy(null);
+    setRepositoriesError(null);
+    setRuns([]);
+    setRunsError(null);
+    setRunDeliverySummaries({});
+    setPushStatus(DEFAULT_PUSH_STATUS);
     setConnectionStatus({
       ...DEFAULT_CONNECTION_STATUS,
-      backend_state: 'unconfigured',
-      backend_message: 'Checking backend…',
+      backend_state: nextConfig.apiBaseUrl ? 'unconfigured' : DEFAULT_CONNECTION_STATUS.backend_state,
+      backend_message: nextConfig.apiBaseUrl
+        ? 'Backend changed. Sign in again for this device.'
+        : DEFAULT_CONNECTION_STATUS.backend_message,
+      session_message: nextConfig.apiBaseUrl
+        ? 'Saved operator session was cleared after backend change.'
+        : DEFAULT_CONNECTION_STATUS.session_message,
     });
   }, []);
 
@@ -345,26 +358,56 @@ export function useOperatorConsole() {
 
   const handleLogout = useCallback(async () => {
     const currentConfig = loadRuntimeConfig();
+    let pushErrorMessage: string | null = null;
+    let revokeErrorMessage: string | null = null;
+
     if (pushStatus.subscribed) {
-      await disablePushNotifications();
+      try {
+        await disablePushNotifications();
+      } catch (error) {
+        pushErrorMessage =
+          error instanceof Error ? error.message : 'Push delivery could not be disabled.';
+      }
     }
+
     if (currentConfig.sessionToken) {
-      await api.revokeCurrentOperatorSession();
+      try {
+        await api.revokeCurrentOperatorSession();
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) {
+          revokeErrorMessage =
+            error instanceof Error ? error.message : 'Operator session could not be revoked.';
+        }
+      }
     }
-      const nextConfig = saveRuntimeConfig({
-        apiBaseUrl: currentConfig.apiBaseUrl,
-        sessionToken: '',
-        username: '',
-      });
-      setRuntimeConfig(nextConfig);
-      markConnectionChecked({
-        backend_state: currentConfig.apiBaseUrl ? 'reachable' : 'unconfigured',
-        backend_message: currentConfig.apiBaseUrl
-          ? `Backend reachable at ${currentConfig.apiBaseUrl}.`
-          : 'Set the backend URL for this device.',
-        session_state: 'signed_out',
-        session_message: 'Signed out on this device.',
-      });
+
+    const nextConfig = saveRuntimeConfig({
+      apiBaseUrl: currentConfig.apiBaseUrl,
+      sessionToken: '',
+      username: '',
+    });
+    setRuntimeConfig(nextConfig);
+    setRepositories([]);
+    setRepositoryPolicy(null);
+    setRepositoriesError(null);
+    setRuns([]);
+    setRunsError(null);
+    setRunDeliverySummaries({});
+    setPushStatus({
+      ...DEFAULT_PUSH_STATUS,
+      error: pushErrorMessage,
+    });
+    markConnectionChecked({
+      backend_state: currentConfig.apiBaseUrl ? 'reachable' : 'unconfigured',
+      backend_message: currentConfig.apiBaseUrl
+        ? `Backend reachable at ${currentConfig.apiBaseUrl}.`
+        : 'Set the backend URL for this device.',
+      session_state: 'signed_out',
+      session_message:
+        revokeErrorMessage || pushErrorMessage
+          ? 'Signed out locally on this device. Some remote cleanup steps failed.'
+          : 'Signed out on this device.',
+    });
   }, [pushStatus.subscribed]);
 
   const handleEnablePush = useCallback(async () => {
