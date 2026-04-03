@@ -356,6 +356,12 @@ export function RunCreationPanel({
     normalizedRemoteRepo.owner && normalizedRemoteRepo.repo
       ? `${normalizedRemoteRepo.owner}/${normalizedRemoteRepo.repo}`
       : null;
+  const canCreateRun =
+    authenticated &&
+    !creatingRun &&
+    Boolean(selectedSourceValue) &&
+    Boolean(effectiveSpecText) &&
+    !(sourceMode === 'remote' && Boolean(normalizedRemoteRepo.error));
 
   useEffect(() => {
     if (useManualRepoPath || !canUseRepoPicker) {
@@ -394,6 +400,47 @@ export function RunCreationPanel({
     }
   };
 
+  const handleCreateRunSubmit = async () => {
+    setCreatingRun(true);
+    setCreateRunError(null);
+    try {
+      await onCreateRun({
+        repo_path: sourceMode === 'local' ? repoPath.trim() : undefined,
+        repo_url: sourceMode === 'remote' ? effectiveRemoteRepoUrl : undefined,
+        base_branch: baseBranch.trim() || 'main',
+        spec_text: effectiveSpecText,
+        issue_title: requestMode === 'issue' ? issueTitle.trim() || undefined : undefined,
+        issue_url:
+          requestMode === 'issue' && normalizedRemoteRepo.issueNumber
+            ? repoUrl.trim() || undefined
+            : undefined,
+        issue_body: requestMode === 'issue' ? issueBody.trim() || undefined : undefined,
+        feature_request_text:
+          requestMode === 'feature' ? featureRequestText.trim() || undefined : undefined,
+        target_branch: targetBranch.trim() || undefined,
+        auto_deliver: autoDeliver,
+        push_on_complete: autoDeliver ? pushOnComplete : false,
+        delivery_remote_name: deliveryRemoteName.trim() || 'origin',
+        spec_attachment_name: specAttachmentContent
+          ? specAttachmentName || 'spec_attachment.md'
+          : undefined,
+        spec_attachment_content: specAttachmentContent || undefined,
+        policy_pack: 'default',
+      });
+      setSpecText('');
+      setIssueTitle('');
+      setIssueBody('');
+      setFeatureRequestText('');
+      setRepoUrl('');
+      setSpecAttachmentName('');
+      setSpecAttachmentContent('');
+    } catch (error) {
+      setCreateRunError(error instanceof Error ? error.message : 'Failed to create run.');
+    } finally {
+      setCreatingRun(false);
+    }
+  };
+
   return (
     <div className="bg-surface-container rounded-xl border border-outline-variant/10 p-6 space-y-4">
       <div>
@@ -401,6 +448,24 @@ export function RunCreationPanel({
         <p className="text-sm text-on-surface-variant mt-1">
           Create a new governed run directly from this device.
         </p>
+      </div>
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] z-20 sm:hidden rounded-xl border border-outline-variant/10 bg-surface/95 backdrop-blur px-3 py-3 shadow-lg shadow-primary/10">
+        <button
+          type="button"
+          data-testid="create-run-submit"
+          disabled={!canCreateRun}
+          onClick={() => {
+            void handleCreateRunSubmit();
+          }}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-primary to-primary-container px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {creatingRun ? (
+            <LoaderCircle className="w-4 h-4 animate-spin" />
+          ) : (
+            <Plus className="w-4 h-4" />
+          )}
+          Create Run
+        </button>
       </div>
       <div className="grid grid-cols-1 gap-3">
         <div className="rounded-lg border border-outline-variant/10 bg-surface-container-low px-4 py-3 space-y-3">
@@ -876,67 +941,23 @@ export function RunCreationPanel({
           {createRunError}
         </div>
       )}
-      <button
-        type="button"
-        data-testid="create-run-submit"
-        disabled={
-          !authenticated ||
-          creatingRun ||
-          !selectedSourceValue ||
-          !effectiveSpecText ||
-          (sourceMode === 'remote' && Boolean(normalizedRemoteRepo.error))
-        }
-        onClick={() => {
-          void (async () => {
-            setCreatingRun(true);
-            setCreateRunError(null);
-            try {
-              await onCreateRun({
-                repo_path: sourceMode === 'local' ? repoPath.trim() : undefined,
-                repo_url: sourceMode === 'remote' ? effectiveRemoteRepoUrl : undefined,
-                base_branch: baseBranch.trim() || 'main',
-                spec_text: effectiveSpecText,
-                issue_title: requestMode === 'issue' ? issueTitle.trim() || undefined : undefined,
-                issue_url:
-                  requestMode === 'issue' && normalizedRemoteRepo.issueNumber
-                    ? repoUrl.trim() || undefined
-                    : undefined,
-                issue_body: requestMode === 'issue' ? issueBody.trim() || undefined : undefined,
-                feature_request_text:
-                  requestMode === 'feature' ? featureRequestText.trim() || undefined : undefined,
-                target_branch: targetBranch.trim() || undefined,
-                auto_deliver: autoDeliver,
-                push_on_complete: autoDeliver ? pushOnComplete : false,
-                delivery_remote_name: deliveryRemoteName.trim() || 'origin',
-                spec_attachment_name: specAttachmentContent
-                  ? specAttachmentName || 'spec_attachment.md'
-                  : undefined,
-                spec_attachment_content: specAttachmentContent || undefined,
-                policy_pack: 'default',
-              });
-              setSpecText('');
-              setIssueTitle('');
-              setIssueBody('');
-              setFeatureRequestText('');
-              setRepoUrl('');
-              setSpecAttachmentName('');
-              setSpecAttachmentContent('');
-            } catch (error) {
-              setCreateRunError(error instanceof Error ? error.message : 'Failed to create run.');
-            } finally {
-              setCreatingRun(false);
-            }
-          })();
-        }}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-primary to-primary-container px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {creatingRun ? (
-          <LoaderCircle className="w-4 h-4 animate-spin" />
-        ) : (
-          <Plus className="w-4 h-4" />
-        )}
-        Create Run
-      </button>
+      <div className="hidden sm:block sticky bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] sm:static -mx-2 sm:mx-0 px-2 sm:px-0 pt-3 bg-gradient-to-t from-surface-container via-surface-container/95 to-transparent">
+        <button
+          type="button"
+          disabled={!canCreateRun}
+          onClick={() => {
+            void handleCreateRunSubmit();
+          }}
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-primary to-primary-container px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 shadow-lg shadow-primary/10"
+        >
+          {creatingRun ? (
+            <LoaderCircle className="w-4 h-4 animate-spin" />
+          ) : (
+            <Plus className="w-4 h-4" />
+          )}
+          Create Run
+        </button>
+      </div>
     </div>
   );
 }

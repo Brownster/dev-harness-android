@@ -133,7 +133,7 @@ function MainLayout() {
 
       <main
         className={cn(
-          'flex-1 w-full px-4 sm:px-6 py-6 sm:py-8 pb-32 overflow-y-auto custom-scrollbar',
+          'flex-1 w-full px-4 sm:px-6 py-6 sm:py-8 pb-[calc(env(safe-area-inset-bottom)+9rem)] overflow-y-auto custom-scrollbar',
           !isMobilePreview && 'max-w-7xl mx-auto',
         )}
       >
