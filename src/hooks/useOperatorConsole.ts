@@ -236,13 +236,13 @@ export function useOperatorConsole() {
 
   useEffect(() => {
     if (!authenticated) {
-      setRunDeliverySummaries({});
+      setRunDeliverySummaries((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
 
     const completedRuns = runs.filter((run) => run.status === 'RUN_COMPLETE');
     if (completedRuns.length === 0) {
-      setRunDeliverySummaries({});
+      setRunDeliverySummaries((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
 
@@ -274,10 +274,14 @@ export function useOperatorConsole() {
 
       setRunDeliverySummaries((current) => {
         const next = { ...current };
+        let changed = false;
         for (const result of results) {
-          next[result.runId] = result.delivery;
+          if (next[result.runId] !== result.delivery) {
+            next[result.runId] = result.delivery;
+            changed = true;
+          }
         }
-        return next;
+        return changed ? next : current;
       });
     })();
 
