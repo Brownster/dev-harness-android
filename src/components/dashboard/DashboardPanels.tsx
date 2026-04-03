@@ -878,6 +878,7 @@ export function RunCreationPanel({
       )}
       <button
         type="button"
+        data-testid="create-run-submit"
         disabled={
           !authenticated ||
           creatingRun ||
