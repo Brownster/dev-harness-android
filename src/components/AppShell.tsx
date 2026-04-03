@@ -346,8 +346,8 @@ export function BottomNav({ isMobilePreview, pathname, onNavigate }: BottomNavPr
   return (
     <nav
       className={cn(
-        'fixed bottom-0 w-full z-50 flex justify-around items-center px-4 pt-2 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/10 pb-[calc(env(safe-area-inset-bottom)+1rem)]',
-        isMobilePreview && 'absolute rounded-b-[2.5rem]',
+        'shrink-0 w-full z-50 flex justify-around items-center px-4 pt-2 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/10 pb-[calc(env(safe-area-inset-bottom)+1rem)]',
+        isMobilePreview && 'rounded-b-[2.5rem]',
       )}
     >
       <NavItem to="/" icon={LayoutDashboard} label="Home" active={pathname === '/'} onNavigate={onNavigate} />
